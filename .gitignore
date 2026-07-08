@@ -1,0 +1,7 @@
+__pycache__/
+*.xlsx
+*.xlsm
+*.txt
+*.json
+escalas_geradas_html/
+!contatos_nova_versao.xlsx
