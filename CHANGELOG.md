@@ -1,0 +1,24 @@
+# Histórico de Alterações
+
+## Atualização de agosto de 2026
+
+Esta atualização consolida as correções aplicadas durante a validação com as grades de agosto de 2026.
+
+| Área | Atualização |
+|---|---|
+| Datas e horários | Datas brasileiras no formato `DD/MM/YYYY` passam a ser interpretadas corretamente; o matching usa `Início`/`Air Start Time` quando a coluna de data não contém hora. |
+| Grades Sportv | O parser identifica `SPORTV`, `SPORTV2` e `SPORTV3` por linha e calcula janelas somente dentro do mesmo canal. |
+| Eventos repetidos | Blocos repetidos são consolidados até o próximo evento distinto, incluindo os limites de TROCA DE PASSES e SPORTV NEWS. |
+| Conteúdos inéditos | Ocorrências `V/I = I` são reconhecidas; se não houver Pré válido, recebem `Conferir Pré`. |
+| PPV/Premiere | Linhas `PRÉ-HORA` são associadas ao próximo evento da mesma data/canal, evitando `Pré igual ao Início`. |
+| Plataformas digitais | `GE.com` consulta a grade principal do Sportv para eventos associados; `GE TV` continua excluído deste fluxo por possuir envio separado. |
+| Segurança do matching | Rótulos genéricos, como `VT DE EVENTO`, e ocorrências de outros dias não podem confirmar horários indevidamente. |
+| Testes | A suíte de regressão cobre os cenários de canais Sportv, PPV, GE.com, eventos repetidos, Pré separado e datas brasileiras. |
+
+## Execução de testes
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -q
+```
+
+Consulte o [guia de entrega](GUIA_DE_ENTREGA.md) para instalação e operação do aplicativo.

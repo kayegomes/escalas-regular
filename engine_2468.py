@@ -1,119 +1,195 @@
-import pandas as pd
+import unicodedata
+
 import numpy as np
+import pandas as pd
+
+
+def _norm_text(value):
+    text = str(value if value is not None else "").strip().upper()
+    text = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in text if not unicodedata.combining(ch))
+
+
+def _get_first(row, keys, default=""):
+    for key in keys:
+        if key in row.index:
+            value = row.get(key)
+            if pd.notna(value):
+                return value
+    return default
+
+
+def _row_text(row):
+    parts = [
+        _get_first(row, ["Tipo de Atividade ", "Tipo de Atividade", "Tipo Atividade "]),
+        _get_first(row, ["Row Display"]),
+        _get_first(row, ["Sub-Atividade", "Sub-Atividade (shift)"]),
+        _get_first(row, ["Descrição", "Evento/Programa", "Atividade/DescriÇõÇœo", "Evento"]),
+        _get_first(row, ["Produto (WO/Quick Hold)", "Produto (WO/Shift)"]),
+        _get_first(row, ["Quick Hold Job Info"]),
+        _get_first(row, ["Quick Hold Job Details"]),
+        _get_first(row, ["Event Group"]),
+    ]
+    return " | ".join(_norm_text(part) for part in parts)
+
+
+def _is_ge_tv_row(row):
+    """Identifica linhas do canal GE TV, cujo envio é feito separadamente."""
+    for col in ["Canal", "Plataforma", "Canal (Master Room)"]:
+        if col in row.index:
+            value = _norm_text(row.get(col))
+            if value.replace(" ", "").replace("-", "") == "GETV":
+                return True
+    return False
+
+
+def _is_folga_row(row):
+    combined = _row_text(row)
+    if "VIAGEM" in combined:
+        return False
+    return any(
+        token in combined
+        for token in ["FOLGA", "DAY OFF", "VACATION", "FERIAS", "FERI", "COMP DAY"]
+    )
+
+
+def _is_quickhold_in_scale(row):
+    tipo = _norm_text(_get_first(row, ["Tipo de Atividade ", "Tipo de Atividade", "Tipo Atividade "]))
+    if "QUICK HOLD" not in tipo:
+        return False
+
+    combined = _row_text(row)
+    if "VIAGEM" in combined:
+        return False
+    if "AUSENCIA MEDICA" in combined or ("AUSENCIA" in combined and "MEDICA" in combined):
+        return False
+
+    return (
+        "PODCAST" in combined
+        or "CABINE DO JOGO" in combined
+        or ("PARTICIPACAO" in combined and "CABINE" in combined and "JOGO" in combined)
+    )
+
+
+def _ensure_columns(df, columns, fill_value=""):
+    for col in columns:
+        if col not in df.columns:
+            df[col] = fill_value
+
 
 def process_2468_base(file_path):
     """
-    Reads the 2468 report (Base MP or Base 2) and consolidates roles by WO#
+    Reads the 2468 report and consolidates roles by WO#.
+    Preserves folgas and selected Quick Holds without WO# so they reach the check.
     """
     xl = pd.ExcelFile(file_path)
     sheet_to_read = None
-    for s in ['base (2)', 'base MP', 'Base MP']:
-        if s in xl.sheet_names:
-            sheet_to_read = s
+    for sheet_name in ["base (2)", "base MP", "Base MP"]:
+        if sheet_name in xl.sheet_names:
+            sheet_to_read = sheet_name
             break
-            
+
     if not sheet_to_read:
-        # Fallback to the first sheet if specific names not found
         sheet_to_read = xl.sheet_names[0]
-        
-    # Try finding the correct header row
+
     df = pd.DataFrame()
-    for h in [0, 1, 2]:
-        temp_df = xl.parse(sheet_to_read, header=h)
-        # Rename column WO # to WO# immediately for check
-        if 'WO #' in temp_df.columns:
-            temp_df = temp_df.rename(columns={'WO #': 'WO#'})
-            
-        if 'WO#' in temp_df.columns or 'Nome' in temp_df.columns or 'Nome ' in temp_df.columns:
+    for header_row in [0, 1, 2]:
+        temp_df = xl.parse(sheet_to_read, header=header_row)
+        if "WO #" in temp_df.columns:
+            temp_df = temp_df.rename(columns={"WO #": "WO#"})
+        if "WO#" in temp_df.columns or "Nome" in temp_df.columns or "Nome " in temp_df.columns:
             df = temp_df
             break
-            
-    if 'WO#' not in df.columns:
-        raise ValueError("Coluna 'WO#' não encontrada no relatório 2468.")
-        
-    # Map columns exactly to what the macro used to output (base email)
-    col_map = {
-        'Nome': 'Nome ',
-        'Tipo de Atividade': 'Tipo Atividade ',
-        'Sub-Atividade': 'Sub-Atividade (shift)',
-        'Canal': 'Canal (Master Room)',
-        'Inicio': 'Início',
-        'Início Recurso': 'Início',
-        'Fim Recurso': 'Fim',
-        'data ': 'Data',
-        'dia': 'Dia',
-        'Air Start Time': 'Hr Produção',
-        'WO Phase': 'WO Status',
-        'Produto (WO/Quick Hold)': 'Produto (WO/Shift)',
-        'Evento/Programa': 'Atividade/Descrição',
-        'Local de Locução': 'Local Narração',
-        'Local': 'Local de Gravação',
-        'Status Aprov.': 'Status',
-        'Notes': 'notas'
-    }
-    
-    df = df.rename(columns=col_map)
-    
-    if 'Canal (Master Room)' in df.columns and 'Plataforma' not in df.columns:
-        df['Plataforma'] = df['Canal (Master Room)']
-        
-    # Drop empty names or WOs
-    df = df.dropna(subset=['Nome ', 'WO#'])
-    
-    # 1. Fill missing values
-    for c in ['Narrador', 'Comentarista', 'Repórter', 'Elenco', 'Coordenador', 'Produtor', 'Pré']:
-        if c not in df.columns:
-            df[c] = ''
-    df['Nome '] = df['Nome '].fillna('')
-    df['Função'] = df['Função'].fillna('')
-    if 'Status' not in df.columns:
-        df['Status'] = ''
-    else:
-        df['Status'] = df['Status'].fillna('')
-    
-    # 2. Aggregation: for each WO#, we collect all Narrators, Commentators, etc.
-    # Grouping by WO# to collect the team
+
+    if "WO#" not in df.columns:
+        raise ValueError("Coluna 'WO#' nao encontrada no relatorio 2468.")
+
+    if "Plataforma" not in df.columns and "Canal" in df.columns:
+        df["Plataforma"] = df["Canal"]
+
+    # GE TV possui fluxo de envio separado e não deve entrar nesta etapa.
+    if not df.empty:
+        ge_tv_mask = df.apply(_is_ge_tv_row, axis=1)
+        df = df[~ge_tv_mask].copy()
+
+    keep_extra_mask = pd.Series(False, index=df.index)
+    if "Nome" in df.columns:
+        keep_extra_mask = df.apply(lambda row: _is_folga_row(row) or _is_quickhold_in_scale(row), axis=1)
+
+    df_extra = df[keep_extra_mask & df["Nome"].notna()].copy() if "Nome" in df.columns else pd.DataFrame()
+    df_main = df[~keep_extra_mask].copy()
+    df_main = df_main.dropna(subset=["Nome", "WO#"]) if "Nome" in df_main.columns else df_main
+
+    if "Nome" in df_main.columns and "Função" not in df_main.columns:
+        df_main["Função"] = ""
+    if "Função" in df_main.columns:
+        df_main["Função"] = df_main["Função"].fillna("")
+
+    role_columns = ["Narrador", "Comentarista", "Repórter", "Coordenador", "Produtor", "Elenco"]
+    _ensure_columns(df_main, role_columns, "")
+
+    if "Nome" in df_main.columns:
+        df_main["Nome"] = df_main["Nome"].fillna("")
+
     wo_team = {}
-    for _, row in df.iterrows():
-        wo = row['WO#']
-        nome = str(row['Nome ']).strip()
-        funcao = str(row['Função']).strip().lower()
+    for _, row in df_main.iterrows():
+        wo = row["WO#"]
+        nome = str(row.get("Nome", "")).strip()
+        funcao = _norm_text(_get_first(row, ["Função", "FunÇõÇœo"])).lower()
+
         if wo not in wo_team:
-            wo_team[wo] = {'Narrador': [], 'Comentarista': [], 'Repórter': [], 'Elenco': [], 'Coordenador': [], 'Produtor': []}
-            
-        # Determine the role category based on 'Função'
-        if 'narrador' in funcao:
-            wo_team[wo]['Narrador'].append(nome)
-        elif 'coment' in funcao:
-            wo_team[wo]['Comentarista'].append(nome)
-        elif 'rep' in funcao or 'reporter' in funcao:
-            wo_team[wo]['Repórter'].append(nome)
-        elif 'coord' in funcao:
-            wo_team[wo]['Coordenador'].append(nome)
-        elif 'produtor' in funcao:
-            wo_team[wo]['Produtor'].append(nome)
+            wo_team[wo] = {
+                "Narrador": [],
+                "Comentarista": [],
+                "Repórter": [],
+                "Coordenador": [],
+                "Produtor": [],
+                "Elenco": [],
+            }
+
+        if "narrador" in funcao:
+            wo_team[wo]["Narrador"].append(nome)
+        elif "coment" in funcao:
+            wo_team[wo]["Comentarista"].append(nome)
+        elif "rep" in funcao or "reporter" in funcao:
+            wo_team[wo]["Repórter"].append(nome)
+        elif "coord" in funcao:
+            wo_team[wo]["Coordenador"].append(nome)
+        elif "produtor" in funcao:
+            wo_team[wo]["Produtor"].append(nome)
         else:
-            wo_team[wo]['Elenco'].append(nome)
-            
-    # Now build the consolidated strings for each WO#
+            wo_team[wo]["Elenco"].append(nome)
+
     for wo in wo_team:
         for role in wo_team[wo]:
-            wo_team[wo][role] = " ; ".join(list(set(wo_team[wo][role])))
-            
-    # Update the dataframe with the consolidated team members
-    df['Narrador'] = df['WO#'].apply(lambda w: wo_team.get(w, {}).get('Narrador', ''))
-    df['Comentarista'] = df['WO#'].apply(lambda w: wo_team.get(w, {}).get('Comentarista', ''))
-    df['Repórter'] = df['WO#'].apply(lambda w: wo_team.get(w, {}).get('Repórter', ''))
-    df['Coordenador'] = df['WO#'].apply(lambda w: wo_team.get(w, {}).get('Coordenador', ''))
-    df['Produtor'] = df['WO#'].apply(lambda w: wo_team.get(w, {}).get('Produtor', ''))
-    df['Elenco'] = df['WO#'].apply(lambda w: wo_team.get(w, {}).get('Elenco', ''))
-    
-    # Tag (by) - The user said: "adicionando a tag (by) quando aplicável". We will append " (by)" for those in "pedido_correção BY"? 
-    # For now, we just consolidate. The user didn't specify exactly what triggers (by), 
-    # but we can add it later if they ask, or just leave the consolidation.
-    
-    # Clean up Data formatting
-    if 'Data' in df.columns:
-        df['Data_raw'] = df['Data'] # Keep raw for crossing
-        
-    return df
+            wo_team[wo][role] = " ; ".join(sorted(set(filter(None, wo_team[wo][role]))))
+
+    for role in role_columns:
+        df_main[role] = df_main["WO#"].apply(lambda w: wo_team.get(w, {}).get(role, ""))
+
+    if "Data" in df_main.columns:
+        df_main["Data_raw"] = df_main["Data"]
+
+    if not df_extra.empty:
+        for col in ["Função", *role_columns, "Plataforma", "Data_raw"]:
+            if col not in df_extra.columns:
+                df_extra[col] = ""
+
+        if "Nome" in df_extra.columns:
+            df_extra["Nome"] = df_extra["Nome"].fillna("")
+        if "Função" in df_extra.columns:
+            df_extra["Função"] = df_extra["Função"].fillna("")
+        if "Data" in df_extra.columns:
+            df_extra["Data_raw"] = df_extra["Data"]
+
+        for role in role_columns:
+            df_extra[role] = ""
+
+        if "Status" not in df_extra.columns:
+            df_extra["Status"] = ""
+        else:
+            df_extra["Status"] = df_extra["Status"].fillna("")
+
+        df_main = pd.concat([df_main, df_extra], ignore_index=True, sort=False)
+
+    return df_main

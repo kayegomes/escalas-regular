@@ -1,0 +1,15 @@
+{
+  "outputs": {
+    "etapa_1": "Check_2405_Gerado.xlsx",
+    "etapa_2": "Check_Pre_Envio_Gerado.xlsx",
+    "html_dir": "escalas_geradas_html",
+    "history": "historico_execucoes.jsonl",
+    "log": "gerador_escalas.log",
+    "contacts": "contatos_nova_versao.xlsx"
+  },
+  "defaults": {
+    "report_2405": "Check pre envio-Macro Colunas - 15052026.xlsm",
+    "report_2468": "(2468) Esporte - Atividades de Equipe – Sub-Atividades_v2_ (9).xlsx",
+    "contacts": "contatos_nova_versao.xlsx"
+  }
+}

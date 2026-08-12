@@ -1,7 +1,30 @@
+# Python
 __pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Arquivos operacionais e dados potencialmente sensíveis
 *.xlsx
 *.xlsm
-*.txt
-*.json
+contatos*.xlsx
+emails_out.txt
+historico_execucoes.jsonl
+
+# Saídas geradas
+Check_2405_Gerado.xlsx
+Check_Pre_Envio_Gerado.xlsx
+Check_Pre_Envio_Mock.xlsx
 escalas_geradas_html/
-test_*.py
+
+# Diagnósticos, logs e arquivos temporários
+*.log
+*.bak
+*.tmp
+*_output.json
+inspect_*.json
+debug_*.json
+
+# Sistema operacional e IDE
+.DS_Store
+.vscode/
+.idea/
