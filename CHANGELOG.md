@@ -2,6 +2,10 @@
 
 ## Atualização de agosto de 2026
 
+### Interface de Log de Execução
+
+A interface desktop agora possui a aba exclusiva **Log de Execução**. O log não ocupa mais a tela principal das etapas, permitindo trabalhar em telas menores sem perder a leitura das mensagens. A nova aba oferece rolagem vertical e horizontal, além de ações para copiar, limpar e salvar o conteúdo.
+
 Esta atualização consolida as correções aplicadas durante a validação com as grades de agosto de 2026.
 
 | Área | Atualização |

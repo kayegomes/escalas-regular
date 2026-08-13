@@ -35,8 +35,8 @@ class GeradorEscalasApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Gerador de Escalas - Motor de Cruzamento V3")
-        self.root.geometry("1020x900")
-        self.root.minsize(900, 720)
+        self.root.geometry("1020x760")
+        self.root.minsize(900, 620)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -51,11 +51,14 @@ class GeradorEscalasApp:
 
         self.tab_gerador = ttk.Frame(self.notebook)
         self.tab_contatos = ttk.Frame(self.notebook)
+        self.tab_logs = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_gerador, text="Gerador de Escalas")
         self.notebook.add(self.tab_contatos, text="Gestão de Contatos")
+        self.notebook.add(self.tab_logs, text="Log de Execução")
 
         self._build_fluxo_gerador()
         self.setup_tab_contatos()
+        self.setup_tab_logs()
         self._autofill_default_paths()
 
     def _setup_logging(self):
@@ -282,19 +285,6 @@ class GeradorEscalasApp:
         )
         self.btn_etapa3.grid(row=7, column=0, columnspan=4, pady=10)
 
-        frame_logs = tk.LabelFrame(self.tab_gerador, text="Logs do Sistema", padx=10, pady=10)
-        frame_logs.pack(fill="both", expand=True, padx=10, pady=5)
-
-        self.txt_log = tk.Text(frame_logs, height=12, width=120)
-        self.txt_log.pack(side=tk.LEFT, fill="both", expand=True)
-        scrollbar_log = tk.Scrollbar(frame_logs, command=self.txt_log.yview)
-        scrollbar_log.pack(side=tk.RIGHT, fill=tk.Y)
-        self.txt_log.config(yscrollcommand=scrollbar_log.set)
-
-        frame_log_actions = tk.Frame(self.tab_gerador)
-        frame_log_actions.pack(fill="x", padx=10)
-        tk.Button(frame_log_actions, text="Salvar Log", command=self.save_log).pack(side=tk.RIGHT)
-
         self.status_var = tk.StringVar(value="Pronto para iniciar")
         self.progress_var = tk.IntVar(value=0)
         frame_progress = tk.Frame(self.tab_gerador)
@@ -308,6 +298,57 @@ class GeradorEscalasApp:
             variable=self.progress_var,
         )
         self.progress_bar.pack(side=tk.LEFT, fill="x", expand=True)
+
+    def setup_tab_logs(self):
+        """Cria uma área dedicada para leitura e gerenciamento do log de execução."""
+        header = ttk.Frame(self.tab_logs, padding=(12, 10, 12, 4))
+        header.pack(fill="x")
+        ttk.Label(header, text="Log de Execução", font=("Arial", 11, "bold")).pack(side=tk.LEFT)
+        ttk.Label(
+            header,
+            text="Acompanhe o processamento completo, inclusive em telas menores.",
+            foreground="#555555",
+        ).pack(side=tk.LEFT, padx=(12, 0))
+
+        actions = ttk.Frame(self.tab_logs, padding=(12, 0, 12, 8))
+        actions.pack(fill="x")
+        ttk.Button(actions, text="Copiar Log", command=self.copy_log).pack(side=tk.LEFT)
+        ttk.Button(actions, text="Limpar Log", command=self.clear_log).pack(side=tk.LEFT, padx=6)
+        ttk.Button(actions, text="Salvar Log", command=self.save_log).pack(side=tk.LEFT)
+
+        frame_log = ttk.Frame(self.tab_logs, padding=(12, 0, 12, 12))
+        frame_log.pack(fill="both", expand=True)
+        frame_log.rowconfigure(0, weight=1)
+        frame_log.columnconfigure(0, weight=1)
+
+        self.txt_log = tk.Text(
+            frame_log,
+            wrap="none",
+            font=("Consolas", 10),
+            undo=False,
+            state="normal",
+        )
+        self.txt_log.grid(row=0, column=0, sticky="nsew")
+
+        scrollbar_y = ttk.Scrollbar(frame_log, orient="vertical", command=self.txt_log.yview)
+        scrollbar_y.grid(row=0, column=1, sticky="ns")
+        scrollbar_x = ttk.Scrollbar(frame_log, orient="horizontal", command=self.txt_log.xview)
+        scrollbar_x.grid(row=1, column=0, sticky="ew")
+        self.txt_log.config(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+
+    def clear_log(self):
+        self.txt_log.delete("1.0", tk.END)
+        self.logger.info("Log visual limpo pelo usuário.")
+
+    def copy_log(self):
+        content = self.txt_log.get("1.0", tk.END).strip()
+        if not content:
+            self.show_info("Log de Execução", "Não há mensagens para copiar.")
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(content)
+        self.root.update_idletasks()
+        self.show_info("Log de Execução", "Log copiado para a área de transferência.")
 
     def _autofill_default_paths(self):
         """Preenche arquivos conhecidos apenas quando estão na pasta do programa."""

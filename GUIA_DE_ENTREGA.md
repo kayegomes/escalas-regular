@@ -19,7 +19,8 @@ O `pywin32` é usado somente para integração com o Outlook. Caso ele não este
 2. Selecione a Base 2468 e as grades Sportv, PPV/Premiere e Combate que serão conferidas.
 3. Execute a etapa de cruzamento para gerar `Check_Pre_Envio_Gerado.xlsx`.
 4. Revise as linhas sinalizadas por `Conferir Pré`, `Horário não encontrado na Grade` ou `Fallback (Multimodalidade)`.
-5. Use a etapa de geração de rascunhos somente após a conferência da planilha.
+5. Acompanhe o processamento na aba **Log de Execução**; ela permite copiar, limpar ou salvar o log sem reduzir a área das etapas.
+6. Use a etapa de geração de rascunhos somente após a conferência da planilha.
 
 ## Regras incorporadas
 
@@ -47,7 +48,7 @@ Os testes de regressão cobrem os cenários tratados nesta atualização, inclui
 
 | Pasta/arquivo | Finalidade |
 |---|---|
-| `gerador_escalas_desktop.py` | Aplicativo principal. |
+| `gerador_escalas_desktop.py` | Aplicativo principal, incluindo a aba exclusiva de Log de Execução. |
 | `engine_*.py` | Motores de leitura, cruzamento e tratamento das grades. |
 | `app_config.json` | Nomes e caminhos configuráveis da aplicação. |
 | `test_*.py` | Suíte de testes automatizados. |
