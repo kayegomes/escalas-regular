@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import pandas as pd
 from openpyxl import load_workbook
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from app_support import append_execution_history, load_app_config, save_with_fallback
 from engine_2468 import process_2468_base
@@ -738,6 +738,76 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
             if val and len(str(val)) > max_len:
                 max_len = len(str(val))
         ws.column_dimensions[ws.cell(row=1, column=status_col_idx).column_letter].width = min(max_len + 4, 60)
+
+    # Legenda em uma aba própria para não ocupar a área operacional da tabela.
+    if "Legenda" in wb.sheetnames:
+        del wb["Legenda"]
+    legend_ws = wb.create_sheet("Legenda")
+    legend_ws.sheet_view.showGridLines = False
+    legend_ws.merge_cells("A1:B1")
+    legend_ws["A1"] = "Legenda — Status Revisão"
+    legend_ws["A1"].font = Font(bold=True, size=14, color="FFFFFFFF")
+    legend_ws["A1"].fill = PatternFill(start_color="FF1F4E78", end_color="FF1F4E78", fill_type="solid")
+    legend_ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    legend_ws.row_dimensions[1].height = 28
+
+    legend_ws["A3"] = "Status Revisão"
+    legend_ws["B3"] = "Significado"
+    header_fill = PatternFill(start_color="FFD9EAF7", end_color="FFD9EAF7", fill_type="solid")
+    border = Border(
+        left=Side(style="thin", color="FFD9D9D9"),
+        right=Side(style="thin", color="FFD9D9D9"),
+        top=Side(style="thin", color="FFD9D9D9"),
+        bottom=Side(style="thin", color="FFD9D9D9"),
+    )
+    for cell in legend_ws[3]:
+        cell.font = Font(bold=True, color="FF1F1F1F")
+        cell.fill = header_fill
+        cell.border = border
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    status_legend = [
+        ("OK", "Correspondência encontrada e sem alerta pendente. Programas sem Pré podem permanecer OK quando localizados na grade."),
+        ("Conferir Pré", "Evento ou conteúdo transmissivo encontrado, mas sem horário de Pré válido. A conferência manual é necessária."),
+        ("Pré igual ao Início", "O Pré e o horário de Início ficaram iguais; conferir se o Pré foi lançado corretamente na grade."),
+        ("Horário não encontrado na Grade", "Nenhuma correspondência confiável foi encontrada. Os horários exibidos permanecem apenas como referência do relatório."),
+        ("Fallback (Multimodalidade)", "Correspondência encontrada em modalidade com maior risco de variação de nomenclatura, como surfe ou tênis; revisar manualmente."),
+        ("A Confirmar", "A grade encontrou o evento, mas o próprio registro está marcado como a confirmar."),
+        ("Local Ausente", "A atividade não possui local de locução preenchido no relatório."),
+        ("Sem Grades Fornecidas", "Não foi fornecida uma grade válida para executar o cruzamento."),
+    ]
+    legend_fills = {
+        "OK": PatternFill(start_color="FF00B050", end_color="FF00B050", fill_type="solid"),
+        "Horário não encontrado na Grade": PatternFill(start_color="FFFFC7CE", end_color="FFFFC7CE", fill_type="solid"),
+        "Sem Grades Fornecidas": PatternFill(start_color="FFFFC7CE", end_color="FFFFC7CE", fill_type="solid"),
+        "Conferir Pré": PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid"),
+        "Pré igual ao Início": PatternFill(start_color="FFFFE699", end_color="FFFFE699", fill_type="solid"),
+        "Fallback (Multimodalidade)": PatternFill(start_color="FFFCE4D6", end_color="FFFCE4D6", fill_type="solid"),
+        "A Confirmar": PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid"),
+        "Local Ausente": PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid"),
+    }
+    for row_idx, (status, meaning) in enumerate(status_legend, start=4):
+        status_cell = legend_ws.cell(row=row_idx, column=1, value=status)
+        meaning_cell = legend_ws.cell(row=row_idx, column=2, value=meaning)
+        status_cell.fill = legend_fills[status]
+        status_cell.font = Font(bold=True, color="FF1F1F1F")
+        for cell in (status_cell, meaning_cell):
+            cell.border = border
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+        legend_ws.row_dimensions[row_idx].height = 42
+
+    note_row = 4 + len(status_legend) + 2
+    legend_ws.merge_cells(start_row=note_row, start_column=1, end_row=note_row, end_column=2)
+    legend_ws.cell(row=note_row, column=1, value='Quando houver mais de um alerta, os status aparecem combinados e separados por " | ".')
+    legend_ws.cell(row=note_row, column=1).font = Font(italic=True, color="FF666666")
+    legend_ws.cell(row=note_row, column=1).alignment = Alignment(wrap_text=True)
+    legend_ws.column_dimensions["A"].width = 34
+    legend_ws.column_dimensions["B"].width = 105
+    legend_ws.freeze_panes = "A4"
+    legend_ws.auto_filter.ref = f"A3:B{3 + len(status_legend)}"
+    legend_ws.sheet_properties.pageSetUpPr.fitToPage = True
+    legend_ws.page_setup.fitToWidth = 1
+    legend_ws.page_setup.fitToHeight = 0
 
     wb.save(out_path)
     append_execution_history(

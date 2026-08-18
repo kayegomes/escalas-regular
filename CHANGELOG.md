@@ -26,3 +26,7 @@ python -m unittest discover -s tests -p "test_*.py" -q
 ```
 
 Consulte o [guia de entrega](GUIA_DE_ENTREGA.md) para instalação e operação do aplicativo.
+
+### Legenda dos Status Revisão
+
+A planilha `Check_Pre_Envio_Gerado.xlsx` agora inclui uma aba `Legenda` com a descrição de `OK`, `Conferir Pré`, `Pré igual ao Início`, `Horário não encontrado na Grade`, `Fallback (Multimodalidade)`, `A Confirmar`, `Local Ausente` e `Sem Grades Fornecidas`, além da explicação para combinações de alertas.
