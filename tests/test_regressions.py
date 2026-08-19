@@ -152,7 +152,8 @@ class EngineRegressionTests(unittest.TestCase):
                 "Repórter": "-",
                 "Coordenador": "-",
                 "Produtor": "-",
-                "Local": "-",
+                "Local": "Estádio Maracanã - Jornalista Mário Filho",
+                "Local de Locução": "Narração By JB",
                 "Produto (WO/Quick Hold)": "-",
             }])
             GeradorEscalasApp.gerar_html(object(), "Abel Neto", df, tmp)
@@ -172,7 +173,8 @@ class EngineRegressionTests(unittest.TestCase):
                 "Fim": "13:45",
                 "Evento/Programa": "EQUADOR X BRASIL",
                 "Produto (WO/Quick Hold)": "CAMPEONATO SUL-AMERICANO MASCULINO DE FUTSAL SUB-17/2026/NA",
-                "Local": "Internacional - Paraguai",
+                "Local": "Estádio Maracanã - Jornalista Mário Filho",
+                "Local de Locução": "Narração By JB",
                 "Elenco": "",
                 "Narrador": "André Felipe",
                 "Comentarista": "Vander Carioca",
@@ -192,6 +194,7 @@ class EngineRegressionTests(unittest.TestCase):
             self.assertIn("Carlla Amara: (21) 99242-1837", html)
             self.assertIn("CAMPEONATO SUL-AMERICANO MASCULINO DE FUTSAL SUB-17/2026/NA", html)
             self.assertIn("EQUADOR X BRASIL", html)
+            self.assertIn("Narração By JB", html)
 
     def test_gecom_platform_matches_main_sportv_grade(self):
         row = pd.Series({

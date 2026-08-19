@@ -1100,7 +1100,16 @@ class GeradorEscalasApp:
             rows_html += f"<td>{fim}</td>"
             rows_html += f"<td>{evento}</td>"
             rows_html += f"<td>{html_value(row.get('Produto (WO/Quick Hold)', row.get('Produto (WO/Shift)', row.get('Produto', '-'))))}</td>"
-            rows_html += f"<td>{html_value(row.get('Local de Gravação', row.get('Local Narração', row.get('Local', '-'))))}</td>"
+            local_raw = "-"
+            for local_column in ("Local de Locução", "Local Narração", "Local de Gravação", "Local"):
+                candidate = row.get(local_column, "-")
+                if candidate is None or pd.isna(candidate):
+                    continue
+                candidate_text = str(candidate).strip()
+                if candidate_text and candidate_text not in {"-", "nan", "NaT", "None"}:
+                    local_raw = candidate_text
+                    break
+            rows_html += f"<td>{html_value(local_raw)}</td>"
             rows_html += f"<td>{html_value(_build_elenco_value(row, nome))}</td>"
             rows_html += f"<td>{html_value(row.get('Coordenador', '-'))}</td>"
             rows_html += f"<td>{html_value(row.get('Produtor', '-'))}</td>"

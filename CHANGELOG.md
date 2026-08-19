@@ -50,3 +50,7 @@ A Etapa 3 agora remove linhas sem atividade real, mesmo quando a planilha traz a
 ### Elenco por janela e folgas no HTML
 
 A Etapa 2 agora consolida o Elenco usando a mesma WO, data, plataforma, evento e janela de início/fim, evitando misturar equipes de janelas distintas do mesmo evento. A Etapa 3 mantém as folgas no HTML e exibe suas descrições, como `Day Off / Folga` e `Comp Day / Folga Compensatória`, sem transformar essas linhas em intervalos de viagem.
+
+### Origem correta do Local
+
+A coluna `Local` dos HTMLs agora usa prioritariamente `Local de Locução` do relatório 2468. Os campos `Local Narração`, `Local de Gravação` e `Local` permanecem apenas como fallback quando a origem principal estiver vazia.
