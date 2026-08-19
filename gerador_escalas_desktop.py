@@ -18,10 +18,6 @@ except ImportError:  # Permite importar e testar a aplicação fora do Windows/O
 
 def _is_empty_transition_row(row):
     """Identifica linhas de viagem/virada de dia sem atividade de escala."""
-    date_text = str(row.get("Data", "")).strip().lower()
-    if " para " not in date_text:
-        return False
-
     def meaningful(value):
         if value is None or pd.isna(value):
             return False
@@ -33,7 +29,31 @@ def _is_empty_transition_row(row):
         "Evento/Programa", "Event Group", "Produto", "Produto (WO/Quick Hold)",
         "Produto (WO/Shift)", "Local", "Local de Locução", "Tipo de Produção",
     )
-    return not any(meaningful(row.get(column)) for column in descriptive_columns)
+    has_description = any(meaningful(row.get(column)) for column in descriptive_columns)
+    has_real_time = any(meaningful(row.get(column)) for column in ("Pré", "Início", "Fim"))
+    return not has_description and not has_real_time
+
+
+def _build_elenco_value(row, recipient_name=""):
+    """Combina participantes e remove o profissional que recebe a escala."""
+    people = []
+    seen = set()
+    recipient_key = re.sub(r"\s+", " ", str(recipient_name or "")).strip().casefold()
+    for column in ("Elenco", "Narrador", "Comentarista", "Repórter"):
+        value = row.get(column, "-")
+        if value is None or pd.isna(value):
+            continue
+        text = str(value).strip()
+        if text in {"", "-", "nan", "NaT", "None"}:
+            continue
+        for person in text.split(";"):
+            person = person.strip()
+            person_key = re.sub(r"\s+", " ", person).casefold()
+            if not person or person == "-" or person_key == recipient_key or person_key in seen:
+                continue
+            people.append(person)
+            seen.add(person_key)
+    return " ; ".join(people) if people else "-"
 
 
 try:
@@ -979,25 +999,6 @@ class GeradorEscalasApp:
                 return "-"
             return html_lib.escape(text)
 
-        def elenco_value(row):
-            """Monta o elenco exibido no HTML a partir das funções da escala."""
-            people = []
-            seen = set()
-            for column in ("Elenco", "Narrador", "Comentarista", "Repórter"):
-                value = row.get(column, "-")
-                if value is None or pd.isna(value):
-                    continue
-                text = str(value).strip()
-                if text in {"", "-", "nan", "NaT", "None"}:
-                    continue
-                for person in text.split(";"):
-                    person = person.strip()
-                    key = person.casefold()
-                    if person and person != "-" and key not in seen:
-                        people.append(person)
-                        seen.add(key)
-            return html_value(" ; ".join(people) if people else "-")
-
         period_dates = []
         if "Data" in df.columns:
             for value in df["Data"].tolist():
@@ -1052,7 +1053,7 @@ class GeradorEscalasApp:
             rows_html += f"<td>{evento}</td>"
             rows_html += f"<td>{html_value(row.get('Produto (WO/Quick Hold)', row.get('Produto (WO/Shift)', row.get('Produto', '-'))))}</td>"
             rows_html += f"<td>{html_value(row.get('Local de Gravação', row.get('Local Narração', row.get('Local', '-'))))}</td>"
-            rows_html += f"<td>{elenco_value(row)}</td>"
+            rows_html += f"<td>{html_value(_build_elenco_value(row, nome))}</td>"
             rows_html += f"<td>{html_value(row.get('Coordenador', '-'))}</td>"
             rows_html += f"<td>{html_value(row.get('Produtor', '-'))}</td>"
             rows_html += "</tr>"

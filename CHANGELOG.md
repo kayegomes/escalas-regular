@@ -42,3 +42,7 @@ O cabeçalho de cada HTML agora informa automaticamente o intervalo da escala no
 ### Filtro de linhas vazias de virada de dia
 
 A Etapa 3 agora remove dos HTMLs registros com data em formato de intervalo, como `10/08/2026 para 11/08/2026`, quando não possuem plataforma, evento, produto, local ou horário de atividade. Atividades reais com virada de madrugada continuam sendo preservadas.
+
+### Limpeza das escalas HTML
+
+A Etapa 3 agora remove linhas sem atividade real, mesmo quando a planilha traz apenas a data e horários `00:00`, que depois apareciam como intervalos de virada de dia no HTML. O campo `Elenco` também exclui automaticamente o profissional que recebe aquela escala.

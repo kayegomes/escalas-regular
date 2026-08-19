@@ -18,9 +18,10 @@ from engine_2468 import _is_ge_tv_row
 from engine_cross import _score_grade_match
 from engine_grades import _consolidate_grade_dataframe_windows, _extend_grade_windows_to_next_event, _merge_repeated_grade_windows, extract_sportv_channel_block, process_premiere_grade
 try:
-    from gerador_escalas_desktop import GeradorEscalasApp, _is_empty_transition_row
+    from gerador_escalas_desktop import GeradorEscalasApp, _build_elenco_value, _is_empty_transition_row
 except ModuleNotFoundError:
     GeradorEscalasApp = None
+    _build_elenco_value = None
     _is_empty_transition_row = None
 from engine_cross import (
     _append_pre_review_alerts,
@@ -85,7 +86,6 @@ class EngineRegressionTests(unittest.TestCase):
         self.assertEqual(_normalize_channel("TV Globo Rede"), "TV GLOBO")
         self.assertEqual(_normalize_text("Irã x Alemanha"), "IRA X ALEMANHA")
 
-    @unittest.skipIf(GeradorEscalasApp is None, "Tkinter não disponível neste ambiente")
     @unittest.skipIf(_is_empty_transition_row is None, "Tkinter não disponível neste ambiente")
     def test_empty_transition_rows_are_filtered_without_removing_real_activities(self):
         empty = pd.Series({
@@ -108,6 +108,16 @@ class EngineRegressionTests(unittest.TestCase):
         })
         self.assertTrue(_is_empty_transition_row(empty))
         self.assertFalse(_is_empty_transition_row(real))
+
+    @unittest.skipIf(_build_elenco_value is None, "Tkinter não disponível neste ambiente")
+    def test_elenco_excludes_the_recipient(self):
+        row = pd.Series({
+            "Elenco": "Grafite ; Rafaelle Seraphim",
+            "Narrador": "Grafite",
+            "Comentarista": "Rafaelle Seraphim",
+            "Repórter": "",
+        })
+        self.assertEqual(_build_elenco_value(row, "Grafite"), "Rafaelle Seraphim")
 
     def test_html_preserves_elenco_product_and_event_fields(self):
         from pathlib import Path
@@ -133,7 +143,8 @@ class EngineRegressionTests(unittest.TestCase):
             GeradorEscalasApp.gerar_html(object(), "André Felipe", df, tmp)
             html_path = next(Path(tmp).glob("escala_*.html"))
             html = html_path.read_text(encoding="utf-8")
-            self.assertIn("André Felipe ; Vander Carioca", html)
+            self.assertIn("Vander Carioca", html)
+            self.assertNotIn("André Felipe ; Vander Carioca", html)
             self.assertIn("Oi André Felipe", html)
             self.assertIn("Escala consolidada: 10/08/2026 a 10/08/2026", html)
             self.assertIn("Dúvidas ou problemas? É só nos procurar:", html)
