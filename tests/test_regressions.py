@@ -110,6 +110,10 @@ class EngineRegressionTests(unittest.TestCase):
             html_path = next(Path(tmp).glob("escala_*.html"))
             html = html_path.read_text(encoding="utf-8")
             self.assertIn("André Felipe ; Vander Carioca", html)
+            self.assertIn("Oi André Felipe", html)
+            self.assertIn("Dúvidas ou problemas? É só nos procurar:", html)
+            self.assertIn("Leticia Alvares: (21) 97951-2324", html)
+            self.assertIn("Carlla Amara: (21) 99242-1837", html)
             self.assertIn("CAMPEONATO SUL-AMERICANO MASCULINO DE FUTSAL SUB-17/2026/NA", html)
             self.assertIn("EQUADOR X BRASIL", html)
 

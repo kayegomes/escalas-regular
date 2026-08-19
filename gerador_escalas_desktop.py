@@ -885,16 +885,33 @@ class GeradorEscalasApp:
         <head>
             <meta charset="utf-8">
             <style>
-                body {{ font-family: Arial, sans-serif; }}
-                h2 {{ color: #333; }}
+                body {{ font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 12px; color: #222; }}
+                .container {{ max-width: 1400px; margin: 0 auto; background: #fff; padding: 22px; border-radius: 10px; box-shadow: 0 1px 8px rgba(0,0,0,.10); }}
+                .greeting {{ text-align: center; border-bottom: 1px solid #d9d9d9; padding-bottom: 18px; margin-bottom: 28px; }}
+                .greeting h1 {{ margin: 0 0 4px; font-size: 24px; color: #222; }}
+                .greeting p {{ margin: 3px 0; color: #666; font-size: 16px; }}
+                .contact-box {{ background: #f7f9fc; border-left: 4px solid #1683e8; padding: 18px 14px; margin-bottom: 24px; font-size: 16px; }}
+                .contact-box strong {{ display: block; margin-bottom: 12px; }}
+                .contact-box p {{ margin: 0; }}
+                h3 {{ margin: 0 0 12px; color: #222; font-size: 17px; }}
                 table {{ border-collapse: collapse; width: 100%; font-size: 12px; }}
-                th, td {{ border: 1px solid #ddd; padding: 6px; text-align: left; }}
+                th, td {{ border: 1px solid #ddd; padding: 6px; text-align: left; vertical-align: top; }}
                 th {{ background-color: #f2f2f2; font-weight: bold; }}
                 tr:nth-child(even) {{ background-color: #f9f9f9; }}
             </style>
         </head>
         <body>
-            <h2>Escala - {nome}</h2>
+            <div class="container">
+                <div class="greeting">
+                    <h1>Oi {nome}</h1>
+                    <p>Tudo bem?</p>
+                    <p>Envio abaixo a escala</p>
+                </div>
+                <div class="contact-box">
+                    <strong>Dúvidas ou problemas? É só nos procurar:</strong>
+                    <p>Leticia Alvares: (21) 97951-2324 | Carlla Amara: (21) 99242-1837</p>
+                </div>
+                <h3>Escala consolidada</h3>
             <table>
                 <tr>
                     <th>Nome</th>
@@ -913,6 +930,7 @@ class GeradorEscalasApp:
                 </tr>
                 {rows}
             </table>
+            </div>
         </body>
         </html>
         """
