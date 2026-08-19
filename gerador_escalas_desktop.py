@@ -934,9 +934,33 @@ class GeradorEscalasApp:
                 return "-"
             return html_lib.escape(text)
 
+        def elenco_value(row):
+            """Monta o elenco exibido no HTML a partir das funções da escala."""
+            people = []
+            seen = set()
+            for column in ("Elenco", "Narrador", "Comentarista", "Repórter"):
+                value = row.get(column, "-")
+                if value is None or pd.isna(value):
+                    continue
+                text = str(value).strip()
+                if text in {"", "-", "nan", "NaT", "None"}:
+                    continue
+                for person in text.split(";"):
+                    person = person.strip()
+                    key = person.casefold()
+                    if person and person != "-" and key not in seen:
+                        people.append(person)
+                        seen.add(key)
+            return html_value(" ; ".join(people) if people else "-")
+
         rows_html = ""
         for _, row in df.iterrows():
-            evento = html_value(row.get("Atividade/Descrição", row.get("Evento/Descrição", "-")))
+            evento = html_value(
+                row.get(
+                    "Atividade/Descrição",
+                    row.get("Evento/Descrição", row.get("Evento/Programa", row.get("Event Group", "-"))),
+                )
+            )
             inicio = html_value(format_time(row.get("Início", "-")))
             fim = html_value(format_time(row.get("Fim", "-")))
             pre = html_value(format_time(row.get("Pré", "-")))
@@ -965,9 +989,9 @@ class GeradorEscalasApp:
             rows_html += f"<td>{inicio}</td>"
             rows_html += f"<td>{fim}</td>"
             rows_html += f"<td>{evento}</td>"
-            rows_html += f"<td>{html_value(row.get('Produto (WO/Shift)', row.get('Produto', '-')))}</td>"
+            rows_html += f"<td>{html_value(row.get('Produto (WO/Quick Hold)', row.get('Produto (WO/Shift)', row.get('Produto', '-'))))}</td>"
             rows_html += f"<td>{html_value(row.get('Local de Gravação', row.get('Local Narração', row.get('Local', '-'))))}</td>"
-            rows_html += f"<td>{html_value(row.get('Elenco', '-'))}</td>"
+            rows_html += f"<td>{elenco_value(row)}</td>"
             rows_html += f"<td>{html_value(row.get('Coordenador', '-'))}</td>"
             rows_html += f"<td>{html_value(row.get('Produtor', '-'))}</td>"
             rows_html += "</tr>"

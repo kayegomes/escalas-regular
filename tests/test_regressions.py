@@ -17,6 +17,10 @@ from engine_2405 import _event_score, _normalize_channel, _normalize_text
 from engine_2468 import _is_ge_tv_row
 from engine_cross import _score_grade_match
 from engine_grades import _consolidate_grade_dataframe_windows, _extend_grade_windows_to_next_event, _merge_repeated_grade_windows, extract_sportv_channel_block, process_premiere_grade
+try:
+    from gerador_escalas_desktop import GeradorEscalasApp
+except ModuleNotFoundError:
+    GeradorEscalasApp = None
 from engine_cross import (
     _append_pre_review_alerts,
     _mark_missing_grade,
@@ -79,6 +83,35 @@ class EngineRegressionTests(unittest.TestCase):
         self.assertEqual(_normalize_channel("Sportv 1"), "SPORTV")
         self.assertEqual(_normalize_channel("TV Globo Rede"), "TV GLOBO")
         self.assertEqual(_normalize_text("Irã x Alemanha"), "IRA X ALEMANHA")
+
+    @unittest.skipIf(GeradorEscalasApp is None, "Tkinter não disponível neste ambiente")
+    def test_html_preserves_elenco_product_and_event_fields(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            df = pd.DataFrame([{
+                "Nome": "André Felipe",
+                "Plataforma": "Sportv 2",
+                "Data": "10/08/2026",
+                "Dia": "Monday",
+                "Pré": "-",
+                "Início": "12:00",
+                "Fim": "13:45",
+                "Evento/Programa": "EQUADOR X BRASIL",
+                "Produto (WO/Quick Hold)": "CAMPEONATO SUL-AMERICANO MASCULINO DE FUTSAL SUB-17/2026/NA",
+                "Local": "Internacional - Paraguai",
+                "Elenco": "",
+                "Narrador": "André Felipe",
+                "Comentarista": "Vander Carioca",
+                "Repórter": "",
+                "Coordenador": "Tomaz Leão",
+                "Produtor": "-",
+            }])
+            GeradorEscalasApp.gerar_html(object(), "André Felipe", df, tmp)
+            html_path = next(Path(tmp).glob("escala_*.html"))
+            html = html_path.read_text(encoding="utf-8")
+            self.assertIn("André Felipe ; Vander Carioca", html)
+            self.assertIn("CAMPEONATO SUL-AMERICANO MASCULINO DE FUTSAL SUB-17/2026/NA", html)
+            self.assertIn("EQUADOR X BRASIL", html)
 
     def test_gecom_platform_matches_main_sportv_grade(self):
         row = pd.Series({
