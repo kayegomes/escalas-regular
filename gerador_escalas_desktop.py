@@ -138,6 +138,7 @@ class GeradorEscalasApp:
         self.setup_tab_contatos()
         self.setup_tab_logs()
         self._autofill_default_paths()
+        self.load_contatos()
 
     def _setup_logging(self):
         self.logger = logging.getLogger("gerador_escalas")
@@ -509,13 +510,16 @@ class GeradorEscalasApp:
 
         self.load_contatos()
 
-    def load_contatos(self):
+    def load_contatos(self, file_path=None):
         for item in self.tree_contatos.get_children():
             self.tree_contatos.delete(item)
 
-        contacts_name = self.config.get("outputs", {}).get("contacts", "contatos_nova_versao.xlsx")
-        contatos_file = os.path.join(self.base_dir, contacts_name)
+        contatos_file = (file_path or self.entry_contacts.get().strip()) if hasattr(self, "entry_contacts") else file_path
+        if not contatos_file:
+            contacts_name = self.config.get("outputs", {}).get("contacts", "contatos_nova_versao.xlsx")
+            contatos_file = os.path.join(self.base_dir, contacts_name)
         if not os.path.exists(contatos_file):
+            self.logger.info("Planilha de contatos não encontrada: %s", contatos_file)
             return
 
         try:
@@ -574,8 +578,10 @@ class GeradorEscalasApp:
             self.tree_contatos.delete(selected[0])
 
     def save_contatos(self):
-        contacts_name = self.config.get("outputs", {}).get("contacts", "contatos_nova_versao.xlsx")
-        contatos_file = os.path.join(self.base_dir, contacts_name)
+        contatos_file = self.entry_contacts.get().strip()
+        if not contatos_file:
+            contacts_name = self.config.get("outputs", {}).get("contacts", "contatos_nova_versao.xlsx")
+            contatos_file = os.path.join(self.base_dir, contacts_name)
         data = []
         for item in self.tree_contatos.get_children():
             v = self.tree_contatos.item(item)["values"]
@@ -669,6 +675,8 @@ class GeradorEscalasApp:
         if file_path:
             entry_widget.delete(0, tk.END)
             entry_widget.insert(0, file_path)
+            if entry_widget is getattr(self, "entry_contacts", None):
+                self.load_contatos(file_path)
 
     def start_etapa0(self):
         path_2405 = self.entry_2405.get().strip()
@@ -1069,12 +1077,16 @@ class GeradorEscalasApp:
                 if candidate_text and candidate_text not in {"-", "nan", "NaT", "None"}:
                     evento_raw = candidate_text
                     break
-            if _is_folga_html_row(row):
+            is_folga = _is_folga_html_row(row)
+            if is_folga:
                 evento_raw = "FOLGA"
             evento = html_value(evento_raw)
-            inicio = html_value(format_time(row.get("Início", "-")))
-            fim = html_value(format_time(row.get("Fim", "-")))
-            pre = html_value(format_time(row.get("Pré", "-")))
+            if is_folga:
+                inicio = fim = pre = "-"
+            else:
+                inicio = html_value(format_time(row.get("Início", "-")))
+                fim = html_value(format_time(row.get("Fim", "-")))
+                pre = html_value(format_time(row.get("Pré", "-")))
 
             data_val = row.get("Data")
             data_formatada = "-"

@@ -58,3 +58,7 @@ A coluna `Local` dos HTMLs agora usa prioritariamente `Local de Locução` do re
 ### Normalização de folgas
 
 As linhas de folga agora são exibidas no HTML com o texto padronizado `FOLGA`, independentemente da descrição original, como `Day Off`, `Comp Day`, férias ou outras variações equivalentes.
+
+### Gestão de contatos e horários de folga
+
+A aba `Gestão de Contatos` agora recarrega a planilha selecionada na Etapa 3 e salva as alterações no mesmo arquivo escolhido. As linhas `FOLGA` dos HTMLs exibem `-` em Pré, Início e Fim, em vez de `00:00`.

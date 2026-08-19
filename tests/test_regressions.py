@@ -160,6 +160,7 @@ class EngineRegressionTests(unittest.TestCase):
             html = next(Path(tmp).glob("escala_*.html")).read_text(encoding="utf-8")
             self.assertIn(">FOLGA<", html)
             self.assertNotIn("Day Off / Folga", html)
+            self.assertNotIn(">00:00<", html)
 
     def test_html_preserves_elenco_product_and_event_fields(self):
         from pathlib import Path
