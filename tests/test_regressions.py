@@ -18,9 +18,10 @@ from engine_2468 import _is_ge_tv_row
 from engine_cross import _score_grade_match
 from engine_grades import _consolidate_grade_dataframe_windows, _extend_grade_windows_to_next_event, _merge_repeated_grade_windows, extract_sportv_channel_block, process_premiere_grade
 try:
-    from gerador_escalas_desktop import GeradorEscalasApp
+    from gerador_escalas_desktop import GeradorEscalasApp, _is_empty_transition_row
 except ModuleNotFoundError:
     GeradorEscalasApp = None
+    _is_empty_transition_row = None
 from engine_cross import (
     _append_pre_review_alerts,
     _mark_missing_grade,
@@ -85,6 +86,29 @@ class EngineRegressionTests(unittest.TestCase):
         self.assertEqual(_normalize_text("Irã x Alemanha"), "IRA X ALEMANHA")
 
     @unittest.skipIf(GeradorEscalasApp is None, "Tkinter não disponível neste ambiente")
+    @unittest.skipIf(_is_empty_transition_row is None, "Tkinter não disponível neste ambiente")
+    def test_empty_transition_rows_are_filtered_without_removing_real_activities(self):
+        empty = pd.Series({
+            "Data": "10/08/2026 para 11/08/2026",
+            "Plataforma": "-",
+            "Evento/Programa": "-",
+            "Produto (WO/Quick Hold)": "-",
+            "Local": "-",
+            "Início": "00:00",
+            "Fim": "00:00",
+        })
+        real = pd.Series({
+            "Data": "15/08/2026",
+            "Plataforma": "Sportv",
+            "Evento/Programa": "PANELA",
+            "Produto (WO/Quick Hold)": "PANELA SPORTV/NA/NA",
+            "Local": "Berrini",
+            "Início": "23:30",
+            "Fim": "01:30",
+        })
+        self.assertTrue(_is_empty_transition_row(empty))
+        self.assertFalse(_is_empty_transition_row(real))
+
     def test_html_preserves_elenco_product_and_event_fields(self):
         from pathlib import Path
         with tempfile.TemporaryDirectory() as tmp:

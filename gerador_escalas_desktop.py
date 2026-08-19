@@ -16,6 +16,26 @@ try:
 except ImportError:  # Permite importar e testar a aplicação fora do Windows/Outlook.
     win32_client = None
 
+def _is_empty_transition_row(row):
+    """Identifica linhas de viagem/virada de dia sem atividade de escala."""
+    date_text = str(row.get("Data", "")).strip().lower()
+    if " para " not in date_text:
+        return False
+
+    def meaningful(value):
+        if value is None or pd.isna(value):
+            return False
+        text = str(value).strip().lower()
+        return text not in {"", "-", "nan", "nat", "none", "00:00", "00:00:00"}
+
+    descriptive_columns = (
+        "Plataforma", "Canal", "Atividade/Descrição", "Evento/Descrição",
+        "Evento/Programa", "Event Group", "Produto", "Produto (WO/Quick Hold)",
+        "Produto (WO/Shift)", "Local", "Local de Locução", "Tipo de Produção",
+    )
+    return not any(meaningful(row.get(column)) for column in descriptive_columns)
+
+
 try:
     from tkcalendar import DateEntry
 except ImportError:  # Fallback simples para ambientes de desenvolvimento sem tkcalendar.
@@ -758,6 +778,12 @@ class GeradorEscalasApp:
 
             df = df.dropna(subset=[nome_col])
             df = df[df[nome_col] != ""]
+
+            transition_mask = df.apply(_is_empty_transition_row, axis=1)
+            removed_transitions = int(transition_mask.sum())
+            if removed_transitions:
+                df = df[~transition_mask].copy()
+                self.log(f"{removed_transitions} linhas de viagem/virada de dia sem atividade foram removidas dos HTMLs.")
 
             if "Data" in df.columns:
                 df["Data_obj"] = pd.to_datetime(df["Data"], errors="coerce", dayfirst=True)
