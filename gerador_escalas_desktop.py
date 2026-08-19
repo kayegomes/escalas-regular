@@ -2,6 +2,7 @@ import html as html_lib
 import logging
 import os
 import queue
+import re
 import threading
 import traceback
 import tkinter as tk
@@ -911,7 +912,7 @@ class GeradorEscalasApp:
                     <strong>Dúvidas ou problemas? É só nos procurar:</strong>
                     <p>Leticia Alvares: (21) 97951-2324 | Carlla Amara: (21) 99242-1837</p>
                 </div>
-                <h3>Escala consolidada</h3>
+                <h3>Escala consolidada: {periodo}</h3>
             <table>
                 <tr>
                     <th>Nome</th>
@@ -971,6 +972,22 @@ class GeradorEscalasApp:
                         seen.add(key)
             return html_value(" ; ".join(people) if people else "-")
 
+        period_dates = []
+        if "Data" in df.columns:
+            for value in df["Data"].tolist():
+                text = str(value).strip()
+                match = re.search(r"\d{1,2}/\d{1,2}/\d{4}", text)
+                date_source = match.group(0) if match else value
+                parsed = pd.to_datetime(date_source, errors="coerce", dayfirst=True)
+                if pd.notna(parsed):
+                    period_dates.append(parsed)
+        if period_dates:
+            period_start = min(period_dates).strftime("%d/%m/%Y")
+            period_end = max(period_dates).strftime("%d/%m/%Y")
+            periodo = f"{period_start} a {period_end}"
+        else:
+            periodo = "Período não informado"
+
         rows_html = ""
         for _, row in df.iterrows():
             evento = html_value(
@@ -1017,7 +1034,13 @@ class GeradorEscalasApp:
         file_name = f"escala_{safe_filename(nome)}.html"
         file_path = os.path.join(output_dir, file_name)
         with open(file_path, "w", encoding="utf-8") as f:
-            f.write(html_template.format(nome=html_lib.escape(str(nome)), rows=rows_html))
+            f.write(
+                html_template.format(
+                    nome=html_lib.escape(str(nome)),
+                    periodo=html_lib.escape(periodo),
+                    rows=rows_html,
+                )
+            )
 
     def enviar_emails(self, html_dir, contacts, teste=False, teste_destinatario=""):
         self.log("Conectando ao Outlook e preparando rascunhos...")

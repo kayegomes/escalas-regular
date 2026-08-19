@@ -34,3 +34,7 @@ A planilha `Check_Pre_Envio_Gerado.xlsx` agora inclui uma aba `Legenda` com a de
 ### Cabeçalho de contato nos HTMLs
 
 Cada escala HTML agora começa com uma saudação personalizada, a mensagem de envio da escala e o bloco de dúvidas ou problemas com os contatos de **Leticia Alvares — (21) 97951-2324** e **Carlla Amara — (21) 99242-1837**.
+
+### Período da escala no cabeçalho
+
+O cabeçalho de cada HTML agora informa automaticamente o intervalo da escala no formato `Escala consolidada: DD/MM/AAAA a DD/MM/AAAA`, calculado a partir das datas presentes na escala.

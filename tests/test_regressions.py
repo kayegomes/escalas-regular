@@ -111,6 +111,7 @@ class EngineRegressionTests(unittest.TestCase):
             html = html_path.read_text(encoding="utf-8")
             self.assertIn("André Felipe ; Vander Carioca", html)
             self.assertIn("Oi André Felipe", html)
+            self.assertIn("Escala consolidada: 10/08/2026 a 10/08/2026", html)
             self.assertIn("Dúvidas ou problemas? É só nos procurar:", html)
             self.assertIn("Leticia Alvares: (21) 97951-2324", html)
             self.assertIn("Carlla Amara: (21) 99242-1837", html)
