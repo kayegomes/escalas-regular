@@ -158,7 +158,8 @@ class EngineRegressionTests(unittest.TestCase):
             }])
             GeradorEscalasApp.gerar_html(object(), "Abel Neto", df, tmp)
             html = next(Path(tmp).glob("escala_*.html")).read_text(encoding="utf-8")
-            self.assertIn("Day Off / Folga", html)
+            self.assertIn(">FOLGA<", html)
+            self.assertNotIn("Day Off / Folga", html)
 
     def test_html_preserves_elenco_product_and_event_fields(self):
         from pathlib import Path

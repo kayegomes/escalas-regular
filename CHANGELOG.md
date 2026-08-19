@@ -54,3 +54,7 @@ A Etapa 2 agora consolida o Elenco usando a mesma WO, data, plataforma, evento e
 ### Origem correta do Local
 
 A coluna `Local` dos HTMLs agora usa prioritariamente `Local de Locução` do relatório 2468. Os campos `Local Narração`, `Local de Gravação` e `Local` permanecem apenas como fallback quando a origem principal estiver vazia.
+
+### Normalização de folgas
+
+As linhas de folga agora são exibidas no HTML com o texto padronizado `FOLGA`, independentemente da descrição original, como `Day Off`, `Comp Day`, férias ou outras variações equivalentes.

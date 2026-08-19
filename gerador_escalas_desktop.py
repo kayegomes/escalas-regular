@@ -5,6 +5,7 @@ import queue
 import re
 import threading
 import traceback
+import unicodedata
 import tkinter as tk
 from logging.handlers import RotatingFileHandler
 from tkinter import filedialog, messagebox, ttk
@@ -34,6 +35,17 @@ def _is_empty_transition_row(row):
     has_description = any(meaningful(row.get(column)) for column in descriptive_columns)
     has_real_time = any(meaningful(row.get(column)) for column in ("Pré", "Início", "Fim"))
     return not has_description and not has_real_time
+
+
+def _is_folga_html_row(row):
+    """Identifica folgas para exibição padronizada no HTML."""
+    values = []
+    for column in ("Descrição", "Row Display", "Tipo de Atividade", "Event Group", "Atividade/Descrição"):
+        value = row.get(column, "")
+        if value is not None and not pd.isna(value):
+            values.append(str(value))
+    combined = unicodedata.normalize("NFKD", " | ".join(values)).encode("ascii", "ignore").decode("ascii").upper()
+    return any(token in combined for token in ("FOLGA", "DAY OFF", "VACATION", "FERIAS", "COMP DAY"))
 
 
 def _date_range_bounds(value):
@@ -1057,6 +1069,8 @@ class GeradorEscalasApp:
                 if candidate_text and candidate_text not in {"-", "nan", "NaT", "None"}:
                     evento_raw = candidate_text
                     break
+            if _is_folga_html_row(row):
+                evento_raw = "FOLGA"
             evento = html_value(evento_raw)
             inicio = html_value(format_time(row.get("Início", "-")))
             fim = html_value(format_time(row.get("Fim", "-")))
