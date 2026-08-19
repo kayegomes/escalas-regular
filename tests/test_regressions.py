@@ -14,7 +14,7 @@ from app_support import (
     save_with_fallback,
 )
 from engine_2405 import _event_score, _normalize_channel, _normalize_text
-from engine_2468 import _is_ge_tv_row
+from engine_2468 import _is_ge_tv_row, _team_key
 from engine_cross import _score_grade_match
 from engine_grades import _consolidate_grade_dataframe_windows, _extend_grade_windows_to_next_event, _merge_repeated_grade_windows, extract_sportv_channel_block, process_premiere_grade
 try:
@@ -110,6 +110,18 @@ class EngineRegressionTests(unittest.TestCase):
         self.assertFalse(_is_empty_transition_row(real))
 
     @unittest.skipIf(_build_elenco_value is None, "Tkinter não disponível neste ambiente")
+    def test_team_key_separates_event_windows(self):
+        base = {
+            "WO#": "WO-1",
+            "Data": "16/08/2026",
+            "Plataforma": "Sportv 3",
+            "Evento/Programa": "CIRCUITO MUNDIAL DE SURF - ETAPA DE TEAHUPOO",
+        }
+        first = pd.Series({**base, "Início": "14:00", "Fim": "19:00"})
+        second = pd.Series({**base, "Início": "19:00", "Fim": "00:00"})
+        self.assertNotEqual(_team_key(first), _team_key(second))
+
+    @unittest.skipIf(_build_elenco_value is None, "Tkinter não disponível neste ambiente")
     def test_elenco_excludes_the_recipient(self):
         row = pd.Series({
             "Elenco": "Grafite ; Rafaelle Seraphim",
@@ -118,6 +130,34 @@ class EngineRegressionTests(unittest.TestCase):
             "Repórter": "",
         })
         self.assertEqual(_build_elenco_value(row, "Grafite"), "Rafaelle Seraphim")
+
+    @unittest.skipIf(GeradorEscalasApp is None, "Tkinter não disponível neste ambiente")
+    def test_html_keeps_folga_rows_and_uses_description(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            df = pd.DataFrame([{
+                "Nome": "Abel Neto",
+                "Data": "13/08/2026",
+                "Dia": "Thursday",
+                "Descrição": "Day Off / Folga",
+                "Row Display": "Day Off / Folga",
+                "Tipo de Atividade": "Other Time Off",
+                "Plataforma": "-",
+                "Início": "00:00",
+                "Fim": "00:00",
+                "Pré": "-",
+                "Elenco": "-",
+                "Narrador": "-",
+                "Comentarista": "Abel Neto",
+                "Repórter": "-",
+                "Coordenador": "-",
+                "Produtor": "-",
+                "Local": "-",
+                "Produto (WO/Quick Hold)": "-",
+            }])
+            GeradorEscalasApp.gerar_html(object(), "Abel Neto", df, tmp)
+            html = next(Path(tmp).glob("escala_*.html")).read_text(encoding="utf-8")
+            self.assertIn("Day Off / Folga", html)
 
     def test_html_preserves_elenco_product_and_event_fields(self):
         from pathlib import Path

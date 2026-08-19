@@ -77,6 +77,25 @@ def _ensure_columns(df, columns, fill_value=""):
             df[col] = fill_value
 
 
+def _team_key(row):
+    """Chave da equipe na mesma WO e na mesma janela do evento."""
+    def value(keys):
+        raw = _get_first(row, keys, "")
+        if raw is None or pd.isna(raw):
+            return ""
+        return str(raw).strip()
+
+    date_value = value(["Data", "Data_raw"])
+    parsed_date = pd.to_datetime(date_value, errors="coerce", dayfirst=True)
+    date_key = parsed_date.strftime("%Y-%m-%d") if pd.notna(parsed_date) else _norm_text(date_value)
+    platform_key = _norm_text(value(["Plataforma", "Canal (Master Room)", "Canal"]))
+    event_key = _norm_text(value(["Evento/Programa", "Descrição", "Atividade/Descrição", "Evento", "Event Group"]))
+    start_key = _norm_text(value(["Início", "Inicio", "InÇðcio", "Air Start Time"]))
+    end_key = _norm_text(value(["Fim", "FIM", "Air End Time"]))
+    wo_key = value(["WO#"])
+    return (wo_key, date_key, platform_key, event_key, start_key, end_key)
+
+
 def process_2468_base(file_path):
     """
     Reads the 2468 report and consolidates roles by WO#.
@@ -131,9 +150,10 @@ def process_2468_base(file_path):
     if "Nome" in df_main.columns:
         df_main["Nome"] = df_main["Nome"].fillna("")
 
+    df_main["__team_key"] = df_main.apply(_team_key, axis=1)
     wo_team = {}
     for _, row in df_main.iterrows():
-        wo = row["WO#"]
+        wo = row["__team_key"]
         nome = str(row.get("Nome", "")).strip()
         funcao = _norm_text(_get_first(row, ["Função", "FunÇõÇœo"])).lower()
 
@@ -165,7 +185,8 @@ def process_2468_base(file_path):
             wo_team[wo][role] = " ; ".join(sorted(set(filter(None, wo_team[wo][role]))))
 
     for role in role_columns:
-        df_main[role] = df_main["WO#"].apply(lambda w: wo_team.get(w, {}).get(role, ""))
+        df_main[role] = df_main["__team_key"].apply(lambda w: wo_team.get(w, {}).get(role, ""))
+    df_main = df_main.drop(columns=["__team_key"])
 
     if "Data" in df_main.columns:
         df_main["Data_raw"] = df_main["Data"]

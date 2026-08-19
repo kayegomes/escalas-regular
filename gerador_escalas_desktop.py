@@ -26,12 +26,37 @@ def _is_empty_transition_row(row):
 
     descriptive_columns = (
         "Plataforma", "Canal", "Atividade/Descrição", "Evento/Descrição",
-        "Evento/Programa", "Event Group", "Produto", "Produto (WO/Quick Hold)",
+        "Evento/Programa", "Event Group", "Descrição", "Sub-Atividade",
+        "Tipo de Atividade ", "Tipo de Atividade", "Tipo Atividade ", "Função",
+        "Produto", "Produto (WO/Quick Hold)",
         "Produto (WO/Shift)", "Local", "Local de Locução", "Tipo de Produção",
     )
     has_description = any(meaningful(row.get(column)) for column in descriptive_columns)
     has_real_time = any(meaningful(row.get(column)) for column in ("Pré", "Início", "Fim"))
     return not has_description and not has_real_time
+
+
+def _date_range_bounds(value):
+    """Retorna a primeira e a última data de um valor simples ou em intervalo."""
+    text = str(value or "")
+    date_texts = re.findall(r"\d{1,2}/\d{1,2}/\d{4}", text)
+    if not date_texts:
+        parsed = pd.to_datetime(value, errors="coerce", dayfirst=True)
+        return (parsed, parsed) if pd.notna(parsed) else (pd.NaT, pd.NaT)
+    parsed_dates = [pd.to_datetime(item, errors="coerce", dayfirst=True) for item in date_texts]
+    parsed_dates = [item for item in parsed_dates if pd.notna(item)]
+    if not parsed_dates:
+        return pd.NaT, pd.NaT
+    return min(parsed_dates), max(parsed_dates)
+
+
+def _format_date_range(value):
+    start, end = _date_range_bounds(value)
+    if pd.isna(start):
+        return "-"
+    start_text = start.strftime("%d/%m/%Y")
+    end_text = end.strftime("%d/%m/%Y")
+    return start_text if start == end else f"{start_text} para {end_text}"
 
 
 def _build_elenco_value(row, recipient_name=""):
@@ -806,12 +831,15 @@ class GeradorEscalasApp:
                 self.log(f"{removed_transitions} linhas de viagem/virada de dia sem atividade foram removidas dos HTMLs.")
 
             if "Data" in df.columns:
-                df["Data_obj"] = pd.to_datetime(df["Data"], errors="coerce", dayfirst=True)
+                df["Data_original"] = df["Data"]
+                bounds = df["Data"].apply(_date_range_bounds)
+                df["Data_obj"] = bounds.apply(lambda item: item[0])
+                df["Data_fim_obj"] = bounds.apply(lambda item: item[1])
                 if data_inicio and data_fim:
                     try:
                         dt_inicio = pd.to_datetime(data_inicio, format="%d/%m/%Y")
                         dt_fim = pd.to_datetime(data_fim, format="%d/%m/%Y")
-                        mask = (df["Data_obj"] >= dt_inicio) & (df["Data_obj"] <= dt_fim)
+                        mask = (df["Data_fim_obj"] >= dt_inicio) & (df["Data_obj"] <= dt_fim)
                         df = df[mask]
                         self.log(f"Filtro aplicado: mostrando eventos de {data_inicio} até {data_fim}.")
                     except Exception as e:
@@ -827,7 +855,7 @@ class GeradorEscalasApp:
                     "Sunday": "Domingo",
                 }
                 df["Dia"] = df["Data_obj"].dt.strftime("%A").map(dias_pt)
-                df["Data"] = df["Data_obj"].dt.strftime("%d/%m/%Y")
+                df["Data"] = df["Data_original"].apply(_format_date_range)
 
             if df.empty:
                 self.set_progress(100, "Nenhum evento no período selecionado")
@@ -1017,12 +1045,19 @@ class GeradorEscalasApp:
 
         rows_html = ""
         for _, row in df.iterrows():
-            evento = html_value(
-                row.get(
-                    "Atividade/Descrição",
-                    row.get("Evento/Descrição", row.get("Evento/Programa", row.get("Event Group", "-"))),
-                )
-            )
+            evento_raw = "-"
+            for event_column in (
+                "Atividade/Descrição", "Evento/Descrição", "Evento/Programa",
+                "Descrição", "Row Display", "Event Group", "Tipo de Atividade",
+            ):
+                candidate = row.get(event_column, "-")
+                if candidate is None or pd.isna(candidate):
+                    continue
+                candidate_text = str(candidate).strip()
+                if candidate_text and candidate_text not in {"-", "nan", "NaT", "None"}:
+                    evento_raw = candidate_text
+                    break
+            evento = html_value(evento_raw)
             inicio = html_value(format_time(row.get("Início", "-")))
             fim = html_value(format_time(row.get("Fim", "-")))
             pre = html_value(format_time(row.get("Pré", "-")))
@@ -1030,17 +1065,30 @@ class GeradorEscalasApp:
             data_val = row.get("Data")
             data_formatada = "-"
             if pd.notnull(data_val) and str(data_val).strip() not in ["-", ""]:
+                raw_date_text = str(data_val).strip()
                 try:
-                    dt = pd.to_datetime(data_val, dayfirst=True)
-                    base_date = dt.strftime("%d/%m/%Y")
-                    first_time = pre if pre != "-" else inicio
-                    if first_time != "-" and first_time[:2] in ["00", "01", "02", "03", "04", "05"]:
-                        next_day = dt + pd.Timedelta(days=1)
-                        data_formatada = f"{base_date} para {next_day.strftime('%d/%m/%Y')}"
+                    if " para " in raw_date_text.lower():
+                        data_formatada = _format_date_range(raw_date_text)
                     else:
-                        data_formatada = base_date
+                        dt = pd.to_datetime(data_val, dayfirst=True)
+                        base_date = dt.strftime("%d/%m/%Y")
+                        event_upper = str(evento_raw).upper()
+                        is_non_work = any(
+                            token in event_upper
+                            for token in ["FOLGA", "DAY OFF", "VACATION", "FERIAS", "COMP DAY"]
+                        )
+                        first_time = pre if pre != "-" else inicio
+                        if (
+                            not is_non_work
+                            and first_time != "-"
+                            and first_time[:2] in ["00", "01", "02", "03", "04", "05"]
+                        ):
+                            next_day = dt + pd.Timedelta(days=1)
+                            data_formatada = f"{base_date} para {next_day.strftime('%d/%m/%Y')}"
+                        else:
+                            data_formatada = base_date
                 except Exception:
-                    data_formatada = str(data_val).split(" ")[0]
+                    data_formatada = raw_date_text.split(" ")[0]
 
             rows_html += "<tr>"
             rows_html += f"<td>{html_value(row.get('Nome ', row.get('Nome', '-')))}</td>"

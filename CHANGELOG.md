@@ -46,3 +46,7 @@ A Etapa 3 agora remove dos HTMLs registros com data em formato de intervalo, com
 ### Limpeza das escalas HTML
 
 A Etapa 3 agora remove linhas sem atividade real, mesmo quando a planilha traz apenas a data e horários `00:00`, que depois apareciam como intervalos de virada de dia no HTML. O campo `Elenco` também exclui automaticamente o profissional que recebe aquela escala.
+
+### Elenco por janela e folgas no HTML
+
+A Etapa 2 agora consolida o Elenco usando a mesma WO, data, plataforma, evento e janela de início/fim, evitando misturar equipes de janelas distintas do mesmo evento. A Etapa 3 mantém as folgas no HTML e exibe suas descrições, como `Day Off / Folga` e `Comp Day / Folga Compensatória`, sem transformar essas linhas em intervalos de viagem.
