@@ -270,3 +270,17 @@ O resultado validado para André Loffredo passou a ser:
 | `-` | `06:00` | `07:30` | `Horário não encontrado na Grade` |
 
 A amostra passou a apresentar 503 registros `OK` e 24 `Horário não encontrado na Grade`, com os demais alertas preservados. Foram adicionadas as regressões `test_tv_globo_event_without_globo_grade_is_not_matched_to_sportv` e `test_generic_dia_does_not_create_event_match`.
+
+## 15. Correção de 12/09/2026 — reprise `R` fechando janela anterior
+
+Foi investigada a linha de **Antero Neto**, WO `2574015-1`, referente a `ARGENTINA X VENEZUELA` no Pré-Olímpico Feminino de Vôlei, em 12/09/2026. O relatório informa Pré `10:10`, Início `10:30` e Fim `13:00`.
+
+Na grade Sportv 2, o evento principal começa às `10:30` com Pré `10:10`. A grade contém linhas intermediárias de `PRIMEIRA FASE` às 11:00 e 11:30 e, às `12:30`, uma linha distinta `SESSÃO SPORTV - FOME DE MEDALHA - VÔLEI` marcada como `R`. O evento seguinte V só aparece às 13:30.
+
+O parser anteriormente ignorava a reprise R como limite e acabava mantendo/estendendo o fim para 13:00. A regra foi corrigida: uma reprise distinta (`R` ou `REPRISE`) também encerra a janela do evento anterior no horário em que começa, quando estiver dentro da janela de continuidade. O resultado validado passou a ser:
+
+| Profissional | Pré | Início | Fim | Status |
+|---|---:|---:|---:|---|
+| Antero Neto | `10:10` | `10:30` | **`12:30`** | `OK` |
+
+Foi adicionada a regressão `test_reprise_distinct_event_closes_previous_window`, e o teste anterior de janela foi alinhado à regra para esperar o início da reprise como fim. A suíte passou com 43 testes OK e 3 ignorados por arquivos/dependências opcionais.

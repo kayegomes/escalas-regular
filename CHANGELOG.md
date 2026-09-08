@@ -83,3 +83,8 @@ Corrigido o parser Sportv para preservar o primeiro horário quando existem linh
 ## Correção de 07/09/2026 — BDRJ/BOM DIA RIO
 
 Corrigido falso match de eventos TV Globo com grades Sportv quando o relatório não preenchia Canal/Plataforma. O caso BDRJ/BOM DIA RIO de André Loffredo estava sendo associado ao `DIAMOND LEAGUE - 15ª ETAPA - DIA 1` às 06:30 por coincidência da palavra genérica `DIA`. O motor agora deriva `TV GLOBO` do campo Cliente e rejeita coincidências baseadas apenas em termos genéricos. Na amostra, a linha passou a manter 06:00–07:30 do relatório e status `Horário não encontrado na Grade`.
+
+
+## Correção de 12/09/2026 — reprise `R` como fechamento de janela
+
+O parser Sportv passou a considerar uma reprise distinta (`R`/`REPRISE`) como limite de fim do evento anterior. No caso Argentina x Venezuela, a transmissão iniciava às 10:30, havia uma reprise às 12:30 e a próxima transmissão V começava às 13:30; o fim correto passou a ser 12:30. A regressão correspondente foi adicionada à suíte.

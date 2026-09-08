@@ -420,6 +420,16 @@ class EngineRegressionTests(unittest.TestCase):
         self.assertEqual(str(news["Início"]), "13:30")
         self.assertEqual(str(news["Fim"]), "14:30")
 
+    def test_reprise_distinct_event_closes_previous_window(self):
+        events = [
+            {"Plataforma": "SPORTV2", "Data": "2026-09-12", "Início": "10:30", "Pré": "10:10", "Fim": "13:00", "Evento": "PRÉ-OLÍMPICO FEMININO DE VÔLEI - ARGENTINA X VENEZUELA", "V/I": "V"},
+            {"Plataforma": "SPORTV2", "Data": "2026-09-12", "Início": "11:00", "Pré": None, "Fim": "12:30", "Evento": "PRÉ-OLÍMPICO FEMININO DE VÔLEI - PRIMEIRA FASE", "V/I": None},
+            {"Plataforma": "SPORTV2", "Data": "2026-09-12", "Início": "12:30", "Pré": None, "Fim": "13:00", "Evento": "SESSÃO SPORTV - FOME DE MEDALHA - VÔLEI", "V/I": "R"},
+            {"Plataforma": "SPORTV2", "Data": "2026-09-12", "Início": "13:30", "Pré": "13:00", "Fim": "16:10", "Evento": "PRÉ-OLÍMPICO FEMININO DE VÔLEI - BRASIL X CHILE", "V/I": "V"},
+        ]
+        extended = _extend_grade_windows_to_next_event(events)
+        self.assertEqual(extended[0]["Fim"], "12:30")
+
     def test_dataframe_window_uses_next_event_boundary(self):
         grades = pd.DataFrame([
             {"Plataforma": "SPORTV", "Data": pd.Timestamp("2026-08-10"), "Início": "22:00", "Fim": "22:30", "Evento": "TROCA DE PASSES", "V/I": "V"},
@@ -428,7 +438,7 @@ class EngineRegressionTests(unittest.TestCase):
         ])
         consolidated = _consolidate_grade_dataframe_windows(grades)
         troca = consolidated[consolidated["Evento"] == "TROCA DE PASSES"].iloc[0]
-        self.assertEqual(str(troca["Fim"]), "23:30")
+        self.assertEqual(str(troca["Fim"]), "22:30")
 
     def test_program_window_extends_to_next_distinct_event(self):
         events = [

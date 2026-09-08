@@ -159,13 +159,26 @@ def _extend_grade_windows_to_next_event(block_events, max_gap_minutes=90):
             if next_key != event_key:
                 continue
             next_vi = str(next_event.get("V/I", "")).strip().upper()
-            if next_vi not in {"V", "I", "AO VIVO", "LIVE"}:
+            if next_vi not in {"V", "R", "REPRISE", "I", "AO VIVO", "LIVE"}:
                 continue
             if _event_key(next_event.get("Evento")) == _event_key(event.get("Evento")):
                 continue
 
             next_start_elapsed = _elapsed_minutes(event.get("Início"), next_event.get("Início"))
-            if next_start_elapsed is None or next_start_elapsed <= event_end_elapsed:
+            if next_start_elapsed is None:
+                break
+
+            # Uma reprise distinta também pode encerrar a janela anterior.
+            # Exemplo: Argentina x Venezuela termina quando a grade inicia
+            # uma reprise às 12:30, mesmo que uma linha V posterior esteja
+            # disponível às 13:30.
+            if next_vi in {"R", "REPRISE"}:
+                if next_start_elapsed <= event_end_elapsed or next_start_elapsed - event_end_elapsed <= max_gap_minutes:
+                    next_boundary = next_event.get("Pré") if next_event.get("Pré") is not None else next_event.get("Início")
+                    event["Fim"] = next_boundary
+                break
+
+            if next_start_elapsed <= event_end_elapsed:
                 break
             if next_start_elapsed - event_end_elapsed <= max_gap_minutes:
                 next_boundary = next_event.get("Pré") if next_event.get("Pré") is not None else next_event.get("Início")
