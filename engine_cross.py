@@ -223,6 +223,11 @@ def _score_grade_match(g_row, ev_norm, time_2468_sec=None):
     elif g_ev in ev_norm or ev_norm in g_ev:
         score += 20
 
+    # Linhas sem marcador V/I normalmente são continuações de uma janela.
+    # Quando competem com uma linha transmissiva próxima, a linha V/I deve
+    # prevalecer mesmo que a continuação tenha título mais exato.
+    grade_vi = _norm_text(g_row.get("V/I"))
+
     g_inicio_sec = _parse_time_seconds(g_row.get("Início"))
     g_pre_sec = _parse_time_seconds(g_row.get("Pré"))
 
@@ -244,6 +249,12 @@ def _score_grade_match(g_row, ev_norm, time_2468_sec=None):
                 score += 10
             else:
                 score -= min(30, int(diff_min / 60) * 5)
+
+            # A linha V/I só deve desempatar uma continuação próxima. Um
+            # bônus sem limite de distância poderia escolher outra ocorrência
+            # do mesmo programa em horário distante.
+            if grade_vi in {"V", "I", "AO VIVO", "LIVE"} and diff_min <= 60:
+                score += 25
 
     return score
 

@@ -284,3 +284,17 @@ O parser anteriormente ignorava a reprise R como limite e acabava mantendo/esten
 | Antero Neto | `10:10` | `10:30` | **`12:30`** | `OK` |
 
 Foi adicionada a regressão `test_reprise_distinct_event_closes_previous_window`, e o teste anterior de janela foi alinhado à regra para esperar o início da reprise como fim. A suíte passou com 43 testes OK e 3 ignorados por arquivos/dependências opcionais.
+
+## 16. Correção de 07/09/2026 — Seleção Sportv às 12:55
+
+Foi investigada a linha de **Belle Suarez**, WO `2496541-1`, referente a `Seleção Sportv` em 07/09/2026. O relatório informa Início `13:00` e Fim `15:30`.
+
+A grade normalizada contém duas ocorrências do mesmo bloco: uma linha transmissiva `V` às `12:55`, intitulada `SELEÇÃO SPORTV - ALTERAÇÃO DURAÇÃO`, com Fim `15:15`, e uma linha de continuidade sem marcador V/I às `13:30`, intitulada `SELEÇÃO SPORTV`, também com Fim `15:15`. O matching anterior escolhia a linha sem marcador das 13:30 por considerar o título exato mais forte, embora a linha V das 12:55 estivesse mais próxima do horário do relatório (`13:00`).
+
+A correção adiciona um desempate controlado: linhas com marcador transmissivo `V`/`I` prevalecem sobre continuações sem marcador somente quando estão até 60 minutos do horário do relatório. O resultado validado ficou:
+
+| Profissional | Pré | Início | Fim | Status |
+|---|---:|---:|---:|---|
+| Belle Suarez | `-` | **`12:55`** | `15:15` | `OK` |
+
+Foi adicionada a regressão `test_transmissive_selection_row_wins_over_unmarked_continuation`. A suíte passou com 44 testes OK e 3 ignorados por arquivos/dependências opcionais. A validação completa preservou os casos de André Loffredo, Antero Neto, Premiere e a aba Legenda.

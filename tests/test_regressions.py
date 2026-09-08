@@ -198,6 +198,25 @@ class EngineRegressionTests(unittest.TestCase):
             self.assertIn("EQUADOR X BRASIL", html)
             self.assertIn("Narração By JB", html)
 
+    def test_transmissive_selection_row_wins_over_unmarked_continuation(self):
+        row = pd.Series({
+            "Plataforma": "Sportv",
+            "Evento/Programa": "Seleção Sportv",
+            "Produto (WO/Quick Hold)": "SELEÇÃO SPORTV/NA/NA",
+            "Event Group": "",
+            "Data_raw": "07/09/2026",
+            "Início": "13:00",
+            "Air Start Time": "13:00",
+        })
+        grades = pd.DataFrame([
+            {"Plataforma": "SPORTV", "Data": pd.Timestamp("2026-09-07"), "Início": "12:55", "Pré": None, "Fim": "15:15", "Evento": "SELEÇÃO SPORTV - ALTERAÇÃO DURAÇÃO", "V/I": "V"},
+            {"Plataforma": "SPORTV", "Data": pd.Timestamp("2026-09-07"), "Início": "13:30", "Pré": None, "Fim": "15:15", "Evento": "SELEÇÃO SPORTV", "V/I": None},
+        ])
+        match = _find_best_grade_match(row, grades)
+        self.assertIsNotNone(match)
+        self.assertEqual(str(match["Início"]), "12:55")
+        self.assertEqual(str(match["V/I"]), "V")
+
     def test_tv_globo_event_without_globo_grade_is_not_matched_to_sportv(self):
         row = pd.Series({
             "Plataforma": "",
