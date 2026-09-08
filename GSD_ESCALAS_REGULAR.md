@@ -240,3 +240,17 @@ Os cinco registros do evento exato `PALMEIRAS X SÃO PAULO` foram validados com 
 A causa da regressão publicada anteriormente foi confirmada: o clone tinha recebido a mudança PPV, mas não havia recebido simultaneamente correções anteriores de Sportv, equivalência de canais e matching do 2468. A mudança isolada de PPV não era responsável pelos 176 casos adicionais; a publicação parcial do código era.
 
 No momento deste registro, a sincronização foi validada, mas ainda deve passar pela suíte completa, revisão final do diff, commit e push antes de ser considerada a versão oficial do GitHub.
+
+## 13. Correção de 12/09/2026 — sequência consecutiva de AQUECIMENTO
+
+Foi identificado e corrigido o caso de **Santos x Cruzeiro**, WO `2561032-1`, para Alline Calandrini. O relatório 2468 informa janela operacional de Início `20:00` até Fim `23:00`, enquanto a grade Sportv apresenta o evento principal às `21:00` e duas linhas consecutivas de `AQUECIMENTO SPORTV`, às `20:00` e `20:30`.
+
+A regra correta é preservar o início da sequência de aquecimento como Pré do evento principal. Portanto, o resultado esperado e validado é:
+
+| Profissional | Pré | Início | Fim | Status |
+|---|---:|---:|---:|---|
+| Alline Calandrini | 20:00 | 21:00 | 23:00 | `OK` |
+
+A causa era a substituição do primeiro aquecimento pelo segundo enquanto o parser percorria linhas consecutivas. O parser agora mantém o primeiro horário da sequência por canal/data e só o substitui depois que o evento seguinte é processado ou quando a data muda.
+
+Foi adicionada a regressão `test_consecutive_aquecimento_keeps_first_pre_time`, que reproduz duas linhas de AQUECIMENTO às 20:00 e 20:30 antes de Santos x Cruzeiro às 21:00. A suíte passou com 40 testes OK e 3 ignorados por arquivos/dependências opcionais.

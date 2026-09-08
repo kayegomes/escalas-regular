@@ -234,6 +234,7 @@ def extract_sportv_channel_block(df, evento_col_idx, flat_events, date_col=None)
     }.get(block_number, f"SPORTV{block_number + 1}")
 
     last_aquecimento_by_channel = {}
+    last_aquecimento_date_by_channel = {}
     current_date_by_channel = {}
     block_events = []
 
@@ -299,7 +300,12 @@ def extract_sportv_channel_block(df, evento_col_idx, flat_events, date_col=None)
                             previous["Fim"] = hora
                     elif str(previous.get("Data", ""))[:10] == str(current_date)[:10]:
                         break
-            last_aquecimento_by_channel[row_channel] = hora
+            previous_pre_date = last_aquecimento_date_by_channel.get(row_channel)
+            current_date_key = str(current_date)[:10] if current_date is not None else ""
+            previous_pre_date_key = str(previous_pre_date)[:10] if previous_pre_date is not None else ""
+            if last_aquecimento_by_channel.get(row_channel) is None or current_date_key != previous_pre_date_key:
+                last_aquecimento_by_channel[row_channel] = hora
+                last_aquecimento_date_by_channel[row_channel] = current_date
             continue
 
         pre = last_aquecimento_by_channel.get(row_channel)
@@ -315,6 +321,7 @@ def extract_sportv_channel_block(df, evento_col_idx, flat_events, date_col=None)
         })
 
         last_aquecimento_by_channel[row_channel] = None
+        last_aquecimento_date_by_channel[row_channel] = None
 
     # Calculate Fim: skip filler/generic blocks (no V/R marker) and find
     # the next live (V) or reprise (R) broadcast event. The Pré of that

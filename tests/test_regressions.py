@@ -377,6 +377,18 @@ class EngineRegressionTests(unittest.TestCase):
         news = [event for event in events if event["Evento"] == "SPORTV NEWS"][0]
         self.assertEqual(str(news["Fim"]), "14:00")
 
+    def test_consecutive_aquecimento_keeps_first_pre_time(self):
+        df = pd.DataFrame([
+            ["SÁB", "2026-09-12", "20:00", "V", "AQUECIMENTO SPORTV", "", "PROGRAMA", "SPORTV", "", 1/24, ""],
+            ["SÁB", "2026-09-12", "20:30", None, "AQUECIMENTO SPORTV", "", "PROGRAMA", "SPORTV", "", 1/48, ""],
+            ["SÁB", "2026-09-12", "21:00", "V", "CAMPEONATO BRASILEIRO DE FUTEBOL", "SANTOS X CRUZEIRO", "EVENTO", "SPORTV", "", 2/24, ""],
+        ], columns=["dia", "data", "hora", "vi", "evento", "obs", "tipo", "canal", "extra", "duracao", "extra2"])
+        events = []
+        extract_sportv_channel_block(df, 4, events)
+        match = [event for event in events if "SANTOS X CRUZEIRO" in event["Evento"]][0]
+        self.assertEqual(str(match["Pré"]), "20:00")
+        self.assertEqual(str(match["Início"]), "21:00")
+
     def test_repeated_sportv_news_window_reaches_1430(self):
         grades = pd.DataFrame([
             {"Plataforma": "SPORTV", "Data": pd.Timestamp("2026-08-15"), "Início": "13:30", "Fim": "14:30", "Evento": "SPORTV NEWS", "V/I": "V"},

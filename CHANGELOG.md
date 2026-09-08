@@ -73,3 +73,8 @@ A saída `Check_Pre_Envio_Gerado.xlsx` recria a aba `Legenda` em toda execução
 A publicação da correção PPV foi complementada com as correções Sportv e de matching que já estavam validadas no diretório de trabalho, mas não haviam sido sincronizadas no clone publicado. A leitura dos blocos horizontais agora preserva os canais Sportv e os limites de AQUECIMENTO/Pré; o cruzamento mantém a equivalência entre Sportv 2/3/4 e o alerta `Mudança de Canal`; e a associação de `PRÉ-HORA` continua sendo feita por data e confronto, mesmo entre `PRE/GE TV` e `PREMIERE`.
 
 A amostra real de setembro foi reprocessada com 504 registros `OK`, 44 `Conferir Pré`, 26 `Fallback (Multimodalidade)` e 23 `Horário não encontrado na Grade`. Os cinco registros de Palmeiras x São Paulo foram validados com Pré 17:30, Início 18:30, Fim 20:40 e status `OK`.
+
+
+## Correção de 12/09/2026 — Pré de AQUECIMENTO consecutivo
+
+Corrigido o parser Sportv para preservar o primeiro horário quando existem linhas consecutivas de `AQUECIMENTO SPORTV` antes do evento principal. No caso Santos x Cruzeiro, o bloco tinha aquecimentos às 20:00 e 20:30 e o jogo às 21:00; o Pré correto passou a ser 20:00, com Início 21:00 e Fim 23:00. A amostra real foi validada para Alline Calandrini com status `OK`, e foi adicionada uma regressão automatizada para esse padrão.
