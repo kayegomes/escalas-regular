@@ -78,3 +78,8 @@ A amostra real de setembro foi reprocessada com 504 registros `OK`, 44 `Conferir
 ## Correção de 12/09/2026 — Pré de AQUECIMENTO consecutivo
 
 Corrigido o parser Sportv para preservar o primeiro horário quando existem linhas consecutivas de `AQUECIMENTO SPORTV` antes do evento principal. No caso Santos x Cruzeiro, o bloco tinha aquecimentos às 20:00 e 20:30 e o jogo às 21:00; o Pré correto passou a ser 20:00, com Início 21:00 e Fim 23:00. A amostra real foi validada para Alline Calandrini com status `OK`, e foi adicionada uma regressão automatizada para esse padrão.
+
+
+## Correção de 07/09/2026 — BDRJ/BOM DIA RIO
+
+Corrigido falso match de eventos TV Globo com grades Sportv quando o relatório não preenchia Canal/Plataforma. O caso BDRJ/BOM DIA RIO de André Loffredo estava sendo associado ao `DIAMOND LEAGUE - 15ª ETAPA - DIA 1` às 06:30 por coincidência da palavra genérica `DIA`. O motor agora deriva `TV GLOBO` do campo Cliente e rejeita coincidências baseadas apenas em termos genéricos. Na amostra, a linha passou a manter 06:00–07:30 do relatório e status `Horário não encontrado na Grade`.

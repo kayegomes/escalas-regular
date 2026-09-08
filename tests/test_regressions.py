@@ -198,6 +198,26 @@ class EngineRegressionTests(unittest.TestCase):
             self.assertIn("EQUADOR X BRASIL", html)
             self.assertIn("Narração By JB", html)
 
+    def test_tv_globo_event_without_globo_grade_is_not_matched_to_sportv(self):
+        row = pd.Series({
+            "Plataforma": "",
+            "Cliente": "TV GLOBO ED. RJ - CPC JORNALISMO",
+            "Evento/Programa": "BDRJ - EXIBIÇÃO",
+            "Produto (WO/Quick Hold)": "BOM DIA RIO",
+            "Event Group": "",
+            "Data_raw": "07/09/2026",
+            "Início": "06:00",
+            "Air Start Time": "06:00",
+        })
+        grades = pd.DataFrame([
+            {"Plataforma": "SPORTV3", "Data": pd.Timestamp("2026-09-07"), "Início": "06:30", "Pré": None, "Fim": None, "Evento": "DIAMOND LEAGUE - 15ª ETAPA - DIA 1", "V/I": None},
+        ])
+        self.assertIsNone(_find_best_grade_match(row, grades))
+
+    def test_generic_dia_does_not_create_event_match(self):
+        grade = pd.Series({"Evento": "DIAMOND LEAGUE - 15ª ETAPA - DIA 1", "Início": "06:30", "Pré": None})
+        self.assertEqual(_score_grade_match(grade, "BDRJ EXIBIÇÃO BOM DIA RIO", 6 * 3600), -100)
+
     def test_gecom_platform_matches_main_sportv_grade(self):
         row = pd.Series({
             "Plataforma": "GE.com 01",

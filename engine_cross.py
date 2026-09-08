@@ -168,7 +168,7 @@ def _event_search_text(row_2468):
 
 GENERIC_WORDS = {
     "LIGA", "DAS", "NACOES", "NAÇOES", "DE", "VOLEI", "VÔLEI", "MASCULINA", "FEMININA",
-    "PRIMEIRA", "FASE", "VT", "EVENTO", "AO", "VIVO", "RODADA", "ETAPA", "JOGO", "MATCH",
+    "PRIMEIRA", "FASE", "VT", "EVENTO", "AO", "VIVO", "RODADA", "ETAPA", "DIA", "JOGO", "MATCH",
     "COPA", "DO", "MUNDO", "GRAND", "PRIX", "SÉRIE", "SERIE", "A", "B", "C", "D"
 }
 
@@ -427,6 +427,10 @@ def _find_best_grade_match(row_2468, df_grades):
     plat_2468 = str(_find_column(row_2468, ["Plataforma", "Canal (Master Room)", "Canal"])).strip().upper()
     if plat_2468 == "NAN":
         plat_2468 = ""
+    if not plat_2468:
+        cliente_2468 = str(_find_column(row_2468, ["Cliente", "Client"])).strip().upper()
+        if "GLOBO" in cliente_2468:
+            plat_2468 = "TV GLOBO"
 
     evento_2468 = _event_search_text(row_2468)
     data_2468 = row_2468.get("Data_raw", row_2468.get("Data"))

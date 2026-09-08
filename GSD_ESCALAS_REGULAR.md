@@ -254,3 +254,19 @@ A regra correta é preservar o início da sequência de aquecimento como Pré do
 A causa era a substituição do primeiro aquecimento pelo segundo enquanto o parser percorria linhas consecutivas. O parser agora mantém o primeiro horário da sequência por canal/data e só o substitui depois que o evento seguinte é processado ou quando a data muda.
 
 Foi adicionada a regressão `test_consecutive_aquecimento_keeps_first_pre_time`, que reproduz duas linhas de AQUECIMENTO às 20:00 e 20:30 antes de Santos x Cruzeiro às 21:00. A suíte passou com 40 testes OK e 3 ignorados por arquivos/dependências opcionais.
+
+## 14. Correção de 07/09/2026 — BDRJ/BOM DIA RIO sem grade TV Globo
+
+Foi investigada a linha de **André Loffredo**, WO `2571311-1`, referente a `BDRJ - EXIBIÇÃO` / `BOM DIA RIO` em 07/09/2026. O relatório 2468 informa Início `06:00` e Fim `07:30`.
+
+A grade normalizada da amostra não contém `BOM DIA RIO`, `BDRJ` ou uma linha TV Globo correspondente nesse dia. O horário `06:30–07:30` do Check anterior veio de um falso match: sem plataforma preenchida no relatório, o cruzamento escolheu `SPORTV3 — DIAMOND LEAGUE - 15ª ETAPA - DIA 1`, às 06:30, por coincidência da palavra genérica `DIA` e proximidade de horário. Não era uma confirmação real do evento.
+
+A correção possui duas partes. Quando `Canal/Plataforma` estiver vazio, o motor passa a derivar `TV GLOBO` do campo `Cliente` quando ele contiver Globo. Além disso, `DIA` foi incluído entre as palavras genéricas, impedindo que um único termo comum crie um match entre programas diferentes.
+
+O resultado validado para André Loffredo passou a ser:
+
+| Pré | Início | Fim | Status |
+|---:|---:|---:|---|
+| `-` | `06:00` | `07:30` | `Horário não encontrado na Grade` |
+
+A amostra passou a apresentar 503 registros `OK` e 24 `Horário não encontrado na Grade`, com os demais alertas preservados. Foram adicionadas as regressões `test_tv_globo_event_without_globo_grade_is_not_matched_to_sportv` e `test_generic_dia_does_not_create_event_match`.
