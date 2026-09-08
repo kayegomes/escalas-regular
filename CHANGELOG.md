@@ -66,3 +66,10 @@ A aba `Gestão de Contatos` agora recarrega a planilha selecionada na Etapa 3 e 
 ### Correção PPV e legenda da Etapa 2
 
 A saída `Check_Pre_Envio_Gerado.xlsx` recria a aba `Legenda` em toda execução, com título, cabeçalhos, significados dos status e o alerta de `Mudança de Canal`. No parser Premiere/PPV, uma linha separada `PRÉ-HORA` é vinculada por data e confronto (`mandante` + `visitante`), sem depender da igualdade entre os canais textuais `PRE/GE TV` e `PREMIERE`.
+
+
+## Atualização de setembro de 2026 — sincronização do motor de grades
+
+A publicação da correção PPV foi complementada com as correções Sportv e de matching que já estavam validadas no diretório de trabalho, mas não haviam sido sincronizadas no clone publicado. A leitura dos blocos horizontais agora preserva os canais Sportv e os limites de AQUECIMENTO/Pré; o cruzamento mantém a equivalência entre Sportv 2/3/4 e o alerta `Mudança de Canal`; e a associação de `PRÉ-HORA` continua sendo feita por data e confronto, mesmo entre `PRE/GE TV` e `PREMIERE`.
+
+A amostra real de setembro foi reprocessada com 504 registros `OK`, 44 `Conferir Pré`, 26 `Fallback (Multimodalidade)` e 23 `Horário não encontrado na Grade`. Os cinco registros de Palmeiras x São Paulo foram validados com Pré 17:30, Início 18:30, Fim 20:40 e status `OK`.

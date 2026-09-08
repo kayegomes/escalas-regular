@@ -16,14 +16,14 @@ def flatten_sportv_grade(file_path):
         xl = pd.ExcelFile(file_path)
         # Assume first sheet is the grade
         df_raw = xl.parse(xl.sheet_names[0], header=None)
-        
+
         # In the SporTV grid, row 3 (index 2) usually contains the dates? No, let's search for "DATA GRADE"
         start_row = 0
         for i, row in df_raw.iterrows():
             if 'DATA' in str(row.values).upper() or 'EVENTO' in str(row.values).upper():
                 start_row = i
                 break
-                
+
         df = xl.parse(xl.sheet_names[0], header=start_row)
 
         date_col = None
@@ -34,13 +34,13 @@ def flatten_sportv_grade(file_path):
 
         if date_col is not None:
             df[date_col] = df[date_col].ffill()
-        
+
         flat_events = []
-        
+
         # In the horizontal layout, we have repeating blocks for each channel.
         # We look for columns that have 'Evento' or 'Programa' in their name
         evento_cols = [c for c in df.columns if 'EVENTO' in str(c).upper() or 'PROGRAMA' in str(c).upper()]
-        
+
         for c in evento_cols:
             # We need to find the related Data, Hora, V/I for this specific Evento column.
             # Usually, they are the columns immediately to the left.
@@ -54,12 +54,12 @@ def flatten_sportv_grade(file_path):
                     idx_list = range(idx.start, idx.stop, idx.step or 1)
                 else:
                     idx_list = np.where(idx)[0]
-                
+
                 for i in idx_list:
                     extract_sportv_channel_block(df, i, flat_events, date_col)
             else:
                 extract_sportv_channel_block(df, idx, flat_events, date_col)
-                
+
         df_flat = pd.DataFrame(flat_events)
         if not df_flat.empty:
             # Clean up
@@ -69,7 +69,7 @@ def flatten_sportv_grade(file_path):
     except Exception as e:
         print(f"Erro processando Grade SporTV: {e}")
         return pd.DataFrame()
-        
+
 def _parse_hour(value):
     if value is None or pd.isna(value):
         return None
@@ -214,45 +214,38 @@ def _merge_repeated_grade_windows(block_events):
 def extract_sportv_channel_block(df, evento_col_idx, flat_events, date_col=None):
     col_evento = df.columns[evento_col_idx]
     col_obs = df.columns[evento_col_idx + 1] if (evento_col_idx + 1) < len(df.columns) else None
-    
+
     # Try to find Data, Hora, V/I to the left
     col_data = df.columns[evento_col_idx - 3] if evento_col_idx >= 3 else None
     col_hora = df.columns[evento_col_idx - 2] if evento_col_idx >= 2 else None
     col_vi = df.columns[evento_col_idx - 1] if evento_col_idx >= 1 else None
     col_canal = df.columns[evento_col_idx + 3] if (evento_col_idx + 3) < len(df.columns) else None
-    
-    # Canal is tricky, it might be in the header above the data, or we can infer from the index 
-    # (e.g. first block is SporTV, second is SporTV 2...)
-    if evento_col_idx < 15:
-        canal = "SPORTV"
-    elif evento_col_idx < 20:
-        canal = "SPORTV2"
-    elif evento_col_idx < 25:
-        canal = "SPORTV3"
-    else:
-        canal = "SPORTV"
-        
+
+    # Os blocos horizontais usam cinco colunas por canal:
+    # Data, Hora, V/I, Evento/Programa e Observação. A coluna seguinte
+    # ao Evento pertence ao bloco seguinte e não deve ser usada como canal.
+    # O canal é determinado pela posição do bloco na grade.
+    block_number = max(0, (evento_col_idx - 10) // 5)
+    canal = {
+        0: "SPORTV",
+        1: "SPORTV2",
+        2: "SPORTV3",
+        3: "SPORTV4",
+    }.get(block_number, f"SPORTV{block_number + 1}")
+
     last_aquecimento_by_channel = {}
     current_date_by_channel = {}
     block_events = []
 
     for _, row in df.iterrows():
+        # Não ler col_canal: no layout mensal essa posição normalmente é a
+        # coluna Data do próximo bloco e causava a perda de linhas válidas.
         row_channel = canal
-        if col_canal is not None and pd.notna(row[col_canal]):
-            raw_channel = str(row[col_canal]).strip().upper().replace(" ", "")
-            if raw_channel in {"SPORTV", "SPORTV1"}:
-                row_channel = "SPORTV"
-            elif raw_channel == "SPORTV2":
-                row_channel = "SPORTV2"
-            elif raw_channel == "SPORTV3":
-                row_channel = "SPORTV3"
-            else:
-                continue
 
         evento = str(row[col_evento]).strip()
         if evento.lower() in ['nan', 'none', '']:
             continue
-            
+
         obs = str(row[col_obs]).strip() if col_obs and pd.notna(row[col_obs]) else ""
         if obs and obs.lower() not in ['nan', 'none', '']:
             if obs.upper() not in evento.upper():
@@ -284,18 +277,28 @@ def extract_sportv_channel_block(df, evento_col_idx, flat_events, date_col=None)
         )
         if is_pre_row:
             # O bloco de Pré/Pré-Jogo também encerra o conteúdo imediatamente
-            # anterior na mesma plataforma e data, mesmo que não seja emitido
-            # como um evento independente no resultado normalizado.
-            for previous in reversed(block_events):
-                if (
-                    str(previous.get("Plataforma", "")).upper() == str(row_channel).upper()
-                    and str(previous.get("Data", ""))[:10] == str(current_date)[:10]
-                    and _time_key(previous.get("Início")) is not None
-                    and _time_key(hora) is not None
-                    and _time_key(hora) > _time_key(previous.get("Início"))
-                ):
-                    previous["Fim"] = hora
-                    break
+            # anterior na mesma plataforma e data. Como grades longas repetem
+            # o mesmo título em várias linhas, o limite deve ser aplicado a
+            # toda a sequência consecutiva, não apenas à última repetição.
+            boundary_time = _time_key(hora)
+            previous_event_key = _event_key(block_events[-1].get("Evento")) if block_events else None
+            if boundary_time is not None and previous_event_key:
+                for previous in reversed(block_events):
+                    same_context = (
+                        str(previous.get("Plataforma", "")).upper() == str(row_channel).upper()
+                        and str(previous.get("Data", ""))[:10] == str(current_date)[:10]
+                        and _event_key(previous.get("Evento")) == previous_event_key
+                        and _time_key(previous.get("Início")) is not None
+                        and boundary_time > _time_key(previous.get("Início"))
+                    )
+                    if same_context:
+                        # O primeiro AQUECIMENTO/Pré já encerra a sequência.
+                        # Aquecimentos posteriores do mesmo bloco não podem
+                        # estender novamente a janela até o jogo seguinte.
+                        if _time_key(previous.get("Fim")) is None:
+                            previous["Fim"] = hora
+                    elif str(previous.get("Data", ""))[:10] == str(current_date)[:10]:
+                        break
             last_aquecimento_by_channel[row_channel] = hora
             continue
 
@@ -317,6 +320,10 @@ def extract_sportv_channel_block(df, evento_col_idx, flat_events, date_col=None)
     # the next live (V) or reprise (R) broadcast event. The Pré of that
     # next event is the real end of the current broadcast block.
     for i in range(len(block_events)):
+        # A linha de AQUECIMENTO/Pré já pode ter definido o fim real do
+        # evento anterior. Não substituí-lo pelo próximo V/I mais distante.
+        if _time_key(block_events[i].get('Fim')) is not None:
+            continue
         for j in range(i + 1, len(block_events)):
             current = block_events[i]
             nxt = block_events[j]
@@ -362,7 +369,7 @@ def process_premiere_grade(file_path):
         df_raw = xl.parse(xl.sheet_names[0], header=None)
         start_row = _find_header_row(df_raw, keywords=("EVENTO", "DATA", "CANAL"))
         df = xl.parse(xl.sheet_names[0], header=start_row)
-        
+
         events = []
         pending_pre = {}
         for _, row in df.iterrows():
@@ -377,7 +384,7 @@ def process_premiere_grade(file_path):
             inicio_value = row.get('HORA') if 'HORA' in df.columns else row.get(':ORA')
             mandante = str(row.get('MANDANTE', '')).strip()
             visitante = str(row.get('VISITANTE', '')).strip()
-            ppv_match_key = _ppv_match_key(data_key, mandante, visitante, evento)
+            matchup_key = _ppv_match_key(data_key, mandante, visitante, evento)
 
             # No PPV, um Pré com mais de 30 minutos pode aparecer como uma
             # linha separada (por exemplo, FLUMINENSE X PALMEIRAS - PRÉ-HORA).
@@ -385,7 +392,7 @@ def process_premiere_grade(file_path):
             evento_norm = evento.upper().replace('É', 'E').replace('-', ' ').strip()
             if 'PRE HORA' in evento_norm or evento_norm in {'PRE', 'AQUECIMENTO'}:
                 pre_value = inicio_value if pd.notna(inicio_value) else row.get('PRÉ')
-                pending_pre[ppv_match_key] = pre_value
+                pending_pre[matchup_key] = pre_value
                 continue
 
             # Construct Event name from Mandante X Visitante if Evento is just "BRASILEIRO"
@@ -394,7 +401,7 @@ def process_premiere_grade(file_path):
             else:
                 evento_full = evento
 
-            pre_value = pending_pre.pop(ppv_match_key, None)
+            pre_value = pending_pre.pop(matchup_key, None)
             if pre_value is None or pd.isna(pre_value):
                 pre_value = row.get('PRÉ')
 
@@ -408,7 +415,7 @@ def process_premiere_grade(file_path):
                 'V/I': 'V',
                 'Raw_Canal': canal
             })
-            
+
         return pd.DataFrame(events)
     except Exception as e:
         print(f"Erro processando Grade Premiere: {e}")
@@ -420,15 +427,15 @@ def process_combate_grade(file_path):
         df_raw = xl.parse(xl.sheet_names[0], header=None)
         start_row = _find_header_row(df_raw, keywords=("EVENTO", "DATA", "COMBATE"))
         df = xl.parse(xl.sheet_names[0], header=start_row)
-        
+
         events = []
         for _, row in df.iterrows():
             evento = str(row.get('EVENTO', '')).strip()
             if evento.lower() in ['nan', 'none', '']:
                 continue
-                
+
             canal_sportv = str(row.get('SPORTV', ''))
-            
+
             events.append({
                 'Plataforma': 'COMBATE',
                 'Data': row.get('DATA'),
@@ -439,7 +446,7 @@ def process_combate_grade(file_path):
                 'V/I': 'V',
                 'Raw_Sportv': canal_sportv
             })
-            
+
         return pd.DataFrame(events)
     except Exception as e:
         print(f"Erro processando Grade Combate: {e}")
@@ -465,12 +472,12 @@ def process_all_grades(path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path_co
     df_sp = _consolidate_grade_dataframe_windows(df_sp)
     df_pr = pd.concat([df for df in [df_pr1, df_pr2] if not df.empty], ignore_index=True) if not df_pr1.empty or not df_pr2.empty else pd.DataFrame()
     df_co = pd.concat([df for df in [df_co1, df_co2] if not df.empty], ignore_index=True) if not df_co1.empty or not df_co2.empty else pd.DataFrame()
-    
+
     all_events = []
-    
+
     if not df_sp.empty:
         all_events.append(df_sp)
-        
+
     if not df_pr.empty:
         # Extract TV Globo from Premiere
         # e.g., 'CANAL' == 'PRE/TVG/GE TV'
@@ -479,7 +486,7 @@ def process_all_grades(path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path_co
             df_pr_globo['Plataforma'] = 'TV GLOBO'
             all_events.append(df_pr_globo)
         all_events.append(df_pr)
-        
+
     if not df_co.empty:
         # Extract TV Globo / SporTV from Combate
         df_co_sp = df_co[df_co['Raw_Sportv'].astype(str).str.contains('SPORTV', case=False, na=False)].copy()
@@ -489,14 +496,14 @@ def process_all_grades(path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path_co
             df_co_sp['Plataforma'] = 'SPORTV' # generic
             all_events.append(df_co_sp)
         all_events.append(df_co)
-        
+
     if not all_events:
         return pd.DataFrame()
-        
+
     df_all = pd.concat(all_events, ignore_index=True)
-    
+
     # Filter out Replays
     if 'V/I' in df_all.columns:
         df_all = df_all[~df_all['V/I'].astype(str).str.upper().isin(['R', 'REPRISE'])]
-        
+
     return df_all

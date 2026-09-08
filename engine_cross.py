@@ -90,6 +90,34 @@ def _is_valid_time_str(val):
     return False
 
 
+def _is_sportv_family(value):
+    normalized = _norm_text(value).replace(" ", "")
+    return normalized.startswith("SPORTV")
+
+
+def _display_sportv_channel(value):
+    normalized = _norm_text(value).replace(" ", "")
+    if normalized == "SPORTV":
+        return "Sportv"
+    if normalized.startswith("SPORTV") and normalized[6:].isdigit():
+        return f"Sportv {normalized[6:]}"
+    return str(value).strip()
+
+
+def _channel_change_alert(report_platform, grade_platform):
+    if not (_is_sportv_family(report_platform) and _is_sportv_family(grade_platform)):
+        return None
+    report_norm = _norm_text(report_platform).replace(" ", "")
+    grade_norm = _norm_text(grade_platform).replace(" ", "")
+    if report_norm == grade_norm:
+        return None
+    return (
+        "Mudança de Canal "
+        f"(escala: {_display_sportv_channel(report_platform)}; "
+        f"grade: {_display_sportv_channel(grade_platform)})"
+    )
+
+
 def _platform_match_mask(df_grades, plat_2468, relaxed=False):
     plat = _norm_text(plat_2468)
     series = df_grades["Plataforma"].astype(str).str.upper()
@@ -99,15 +127,10 @@ def _platform_match_mask(df_grades, plat_2468, relaxed=False):
     if "GE.COM" in plat or "GECOM" in plat:
         return series.str.contains("SPORTV1|SPORTV 1|^SPORTV$", na=False)
     if "SPORTV" in plat:
-        if relaxed:
-            return series.str.contains("SPORTV", na=False)
-        if "2" in plat:
-            return series.str.contains("SPORTV2|SPORTV 2", na=False)
-        elif "3" in plat:
-            return series.str.contains("SPORTV3|SPORTV 3", na=False)
-        elif "1" in plat or plat in {"SPORTV", "SPORTV 1", "SPORTV1"}:
-            return series.str.contains("SPORTV1|SPORTV 1|^SPORTV$", na=False)
-        return series.str.contains("SPORTV", na=False)
+        # Sportv, Sportv 2, Sportv 3 e Sportv 4 são canais internos do mesmo
+        # fluxo. A equivalência vale no mesmo dia; a diferença é sinalizada
+        # no status para revisão, sem perder o horário encontrado.
+        return series.str.startswith("SPORTV", na=False)
     if "PREMIERE" in plat:
         return series == "PREMIERE"
     if "COMBATE" in plat:
@@ -560,6 +583,12 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
         has_valid_grade_time = False
 
         if best_match is not None:
+            channel_alert = _channel_change_alert(plat_2468, best_match.get("Plataforma", ""))
+            if channel_alert:
+                alertas.append(channel_alert)
+                if severity == "OK":
+                    severity = "YELLOW"
+
             if any(token in _norm_text(evento_2468) for token in ["SURF", "TENIS"]):
                 alertas.append("Fallback (Multimodalidade)")
                 if severity == "OK":
@@ -693,52 +722,6 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
     wb = load_workbook(out_path)
     ws = wb.active
 
-    red_fill = PatternFill(start_color="FFFF0000", end_color="FFFF0000", fill_type="solid")
-    yellow_fill = PatternFill(start_color="FFFFFF00", end_color="FFFFFF00", fill_type="solid")
-    green_fill = PatternFill(start_color="FF00B050", end_color="FF00B050", fill_type="solid")
-
-    red_font = Font(color="FFFF0000", bold=True)
-    yellow_font = Font(color="FF9C6500", bold=True)
-    green_font = Font(color="FF006100", bold=True)
-    white_font = Font(color="FFFFFFFF", bold=True)
-
-    status_col_idx = None
-    for col_idx in range(1, ws.max_column + 1):
-        header = ws.cell(row=1, column=col_idx).value
-        if header and "STATUS REVISAO" in _norm_text(header):
-            status_col_idx = col_idx
-            break
-
-    if status_col_idx:
-        for row_idx in range(2, ws.max_row + 1):
-            status_cell = ws.cell(row=row_idx, column=status_col_idx)
-            sev = severity_map.get(row_idx - 2, "OK")
-
-            if sev == "RED":
-                status_cell.fill = red_fill
-                status_cell.font = white_font
-                light_red = PatternFill(start_color="FFFFC7CE", end_color="FFFFC7CE", fill_type="solid")
-                for col in range(1, ws.max_column + 1):
-                    if col != status_col_idx:
-                        ws.cell(row=row_idx, column=col).fill = light_red
-            elif sev == "YELLOW":
-                status_cell.fill = yellow_fill
-                status_cell.font = yellow_font
-                light_yellow = PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid")
-                for col in range(1, ws.max_column + 1):
-                    if col != status_col_idx:
-                        ws.cell(row=row_idx, column=col).fill = light_yellow
-            else:
-                status_cell.fill = green_fill
-                status_cell.font = white_font
-
-        max_len = len("Status Revisão")
-        for row_idx in range(2, ws.max_row + 1):
-            val = ws.cell(row=row_idx, column=status_col_idx).value
-            if val and len(str(val)) > max_len:
-                max_len = len(str(val))
-        ws.column_dimensions[ws.cell(row=1, column=status_col_idx).column_letter].width = min(max_len + 4, 60)
-
     # Legenda em uma aba própria para não ocupar a área operacional da tabela.
     if "Legenda" in wb.sheetnames:
         del wb["Legenda"]
@@ -810,6 +793,52 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
     legend_ws.sheet_properties.pageSetUpPr.fitToPage = True
     legend_ws.page_setup.fitToWidth = 1
     legend_ws.page_setup.fitToHeight = 0
+
+    red_fill = PatternFill(start_color="FFFF0000", end_color="FFFF0000", fill_type="solid")
+    yellow_fill = PatternFill(start_color="FFFFFF00", end_color="FFFFFF00", fill_type="solid")
+    green_fill = PatternFill(start_color="FF00B050", end_color="FF00B050", fill_type="solid")
+
+    red_font = Font(color="FFFF0000", bold=True)
+    yellow_font = Font(color="FF9C6500", bold=True)
+    green_font = Font(color="FF006100", bold=True)
+    white_font = Font(color="FFFFFFFF", bold=True)
+
+    status_col_idx = None
+    for col_idx in range(1, ws.max_column + 1):
+        header = ws.cell(row=1, column=col_idx).value
+        if header and "STATUS REVISAO" in _norm_text(header):
+            status_col_idx = col_idx
+            break
+
+    if status_col_idx:
+        for row_idx in range(2, ws.max_row + 1):
+            status_cell = ws.cell(row=row_idx, column=status_col_idx)
+            sev = severity_map.get(row_idx - 2, "OK")
+
+            if sev == "RED":
+                status_cell.fill = red_fill
+                status_cell.font = white_font
+                light_red = PatternFill(start_color="FFFFC7CE", end_color="FFFFC7CE", fill_type="solid")
+                for col in range(1, ws.max_column + 1):
+                    if col != status_col_idx:
+                        ws.cell(row=row_idx, column=col).fill = light_red
+            elif sev == "YELLOW":
+                status_cell.fill = yellow_fill
+                status_cell.font = yellow_font
+                light_yellow = PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid")
+                for col in range(1, ws.max_column + 1):
+                    if col != status_col_idx:
+                        ws.cell(row=row_idx, column=col).fill = light_yellow
+            else:
+                status_cell.fill = green_fill
+                status_cell.font = white_font
+
+        max_len = len("Status Revisão")
+        for row_idx in range(2, ws.max_row + 1):
+            val = ws.cell(row=row_idx, column=status_col_idx).value
+            if val and len(str(val)) > max_len:
+                max_len = len(str(val))
+        ws.column_dimensions[ws.cell(row=1, column=status_col_idx).column_letter].width = min(max_len + 4, 60)
 
     wb.save(out_path)
     append_execution_history(
