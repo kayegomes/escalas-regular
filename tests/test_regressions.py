@@ -16,7 +16,7 @@ from app_support import (
 from engine_2405 import _event_score, _normalize_channel, _normalize_text
 from engine_2468 import _is_ge_tv_row, _team_key
 from engine_cross import _score_grade_match
-from engine_grades import _consolidate_grade_dataframe_windows, _extend_grade_windows_to_next_event, _merge_repeated_grade_windows, extract_sportv_channel_block, process_premiere_grade
+from engine_grades import _consolidate_grade_dataframe_windows, _extend_grade_windows_to_next_event, _merge_repeated_grade_windows, _time_key, extract_sportv_channel_block, process_premiere_grade
 try:
     from gerador_escalas_desktop import GeradorEscalasApp, _build_elenco_value, _is_empty_transition_row
 except ModuleNotFoundError:
@@ -216,6 +216,20 @@ class EngineRegressionTests(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(str(match["Plataforma"]), "SPORTV")
         self.assertEqual(str(match["Evento"]), "PANELA")
+
+    def test_ppv_pre_hora_different_channel_attaches_by_matchup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "ppv_separate_channel.xlsx")
+            raw = pd.DataFrame([
+                {"DATA": "2026-09-12", "HORA": "17:30", "CANAL": "PRE/GE TV", "EVENTO": "PRÉ-HORA", "MANDANTE": "PALMEIRAS", "VISITANTE": "SÃO PAULO", "PÓS": None},
+                {"DATA": "2026-09-12", "HORA": "18:30", "CANAL": "PREMIERE", "EVENTO": "BRASILEIRO", "MANDANTE": "PALMEIRAS", "VISITANTE": "SÃO PAULO", "PÓS": "20:40"},
+            ])
+            raw.to_excel(path, index=False)
+            result = process_premiere_grade(path)
+            self.assertEqual(len(result), 1)
+            self.assertEqual(_time_key(result.iloc[0]["Pré"]), 17 * 60 + 30)
+            self.assertEqual(_time_key(result.iloc[0]["Início"]), 18 * 60 + 30)
+            self.assertEqual(_time_key(result.iloc[0]["Fim"]), 20 * 60 + 40)
 
     def test_ppv_separate_pre_hora_attaches_to_following_event(self):
         from pathlib import Path

@@ -111,6 +111,15 @@ def _event_key(value):
     return " ".join(str(value or "").upper().split())
 
 
+def _ppv_match_key(data_key, mandante, visitante, evento):
+    """Chave do confronto PPV, independente do canal textual da linha."""
+    home = _event_key(mandante)
+    away = _event_key(visitante)
+    if home and away and home not in {"NAN", "NONE"} and away not in {"NAN", "NONE"}:
+        return f"{data_key}|{home}|{away}"
+    return f"{data_key}|{_event_key(evento)}"
+
+
 def _elapsed_minutes(start, end):
     start_key = _time_key(start)
     end_key = _time_key(end)
@@ -366,6 +375,9 @@ def process_premiere_grade(file_path):
             canal = str(row.get('CANAL', 'PREMIERE'))
             channel_key = canal.strip().upper() or 'PREMIERE'
             inicio_value = row.get('HORA') if 'HORA' in df.columns else row.get(':ORA')
+            mandante = str(row.get('MANDANTE', '')).strip()
+            visitante = str(row.get('VISITANTE', '')).strip()
+            ppv_match_key = _ppv_match_key(data_key, mandante, visitante, evento)
 
             # No PPV, um Pré com mais de 30 minutos pode aparecer como uma
             # linha separada (por exemplo, FLUMINENSE X PALMEIRAS - PRÉ-HORA).
@@ -373,18 +385,16 @@ def process_premiere_grade(file_path):
             evento_norm = evento.upper().replace('É', 'E').replace('-', ' ').strip()
             if 'PRE HORA' in evento_norm or evento_norm in {'PRE', 'AQUECIMENTO'}:
                 pre_value = inicio_value if pd.notna(inicio_value) else row.get('PRÉ')
-                pending_pre[(channel_key, data_key)] = pre_value
+                pending_pre[ppv_match_key] = pre_value
                 continue
 
             # Construct Event name from Mandante X Visitante if Evento is just "BRASILEIRO"
-            mandante = str(row.get('MANDANTE', '')).strip()
-            visitante = str(row.get('VISITANTE', '')).strip()
             if mandante and visitante and mandante.lower() != 'nan' and visitante.lower() != 'nan':
                 evento_full = f"{mandante} X {visitante} - {evento}"
             else:
                 evento_full = evento
 
-            pre_value = pending_pre.pop((channel_key, data_key), None)
+            pre_value = pending_pre.pop(ppv_match_key, None)
             if pre_value is None or pd.isna(pre_value):
                 pre_value = row.get('PRÉ')
 

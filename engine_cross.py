@@ -772,6 +772,7 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
         ("Pré igual ao Início", "O Pré e o horário de Início ficaram iguais; conferir se o Pré foi lançado corretamente na grade."),
         ("Horário não encontrado na Grade", "Nenhuma correspondência confiável foi encontrada. Os horários exibidos permanecem apenas como referência do relatório."),
         ("Fallback (Multimodalidade)", "Correspondência encontrada em modalidade com maior risco de variação de nomenclatura, como surfe ou tênis; revisar manualmente."),
+        ("Mudança de Canal", "Evento encontrado no mesmo dia, mas em canal diferente do canal da escala; o horário foi confirmado na grade."),
         ("A Confirmar", "A grade encontrou o evento, mas o próprio registro está marcado como a confirmar."),
         ("Local Ausente", "A atividade não possui local de locução preenchido no relatório."),
         ("Sem Grades Fornecidas", "Não foi fornecida uma grade válida para executar o cruzamento."),
@@ -783,6 +784,7 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
         "Conferir Pré": PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid"),
         "Pré igual ao Início": PatternFill(start_color="FFFFE699", end_color="FFFFE699", fill_type="solid"),
         "Fallback (Multimodalidade)": PatternFill(start_color="FFFCE4D6", end_color="FFFCE4D6", fill_type="solid"),
+        "Mudança de Canal": PatternFill(start_color="FFDDEBF7", end_color="FFDDEBF7", fill_type="solid"),
         "A Confirmar": PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid"),
         "Local Ausente": PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid"),
     }

@@ -14,7 +14,7 @@ Esta atualização consolida as correções aplicadas durante a validação com 
 | Grades Sportv | O parser identifica `SPORTV`, `SPORTV2` e `SPORTV3` por linha e calcula janelas somente dentro do mesmo canal. |
 | Eventos repetidos | Blocos repetidos são consolidados até o próximo evento distinto, incluindo os limites de TROCA DE PASSES e SPORTV NEWS. |
 | Conteúdos inéditos | Ocorrências `V/I = I` são reconhecidas; se não houver Pré válido, recebem `Conferir Pré`. |
-| PPV/Premiere | Linhas `PRÉ-HORA` são associadas ao próximo evento da mesma data/canal, evitando `Pré igual ao Início`. |
+| PPV/Premiere | Linhas `PRÉ-HORA` são associadas ao evento do mesmo confronto e data, mesmo quando o canal textual da linha de Pré é diferente, evitando `Pré igual ao Início`. |
 | Plataformas digitais | `GE.com` consulta a grade principal do Sportv para eventos associados; `GE TV` continua excluído deste fluxo por possuir envio separado. |
 | Segurança do matching | Rótulos genéricos, como `VT DE EVENTO`, e ocorrências de outros dias não podem confirmar horários indevidamente. |
 | Testes | A suíte de regressão cobre os cenários de canais Sportv, PPV, GE.com, eventos repetidos, Pré separado e datas brasileiras. |
@@ -29,7 +29,7 @@ Consulte o [guia de entrega](GUIA_DE_ENTREGA.md) para instalação e operação 
 
 ### Legenda dos Status Revisão
 
-A planilha `Check_Pre_Envio_Gerado.xlsx` agora inclui uma aba `Legenda` com a descrição de `OK`, `Conferir Pré`, `Pré igual ao Início`, `Horário não encontrado na Grade`, `Fallback (Multimodalidade)`, `A Confirmar`, `Local Ausente` e `Sem Grades Fornecidas`, além da explicação para combinações de alertas.
+A planilha `Check_Pre_Envio_Gerado.xlsx` agora inclui uma aba `Legenda` com a descrição de `OK`, `Conferir Pré`, `Pré igual ao Início`, `Horário não encontrado na Grade`, `Fallback (Multimodalidade)`, `Mudança de Canal`, `A Confirmar`, `Local Ausente` e `Sem Grades Fornecidas`, além da explicação para combinações de alertas.
 
 ### Cabeçalho de contato nos HTMLs
 
@@ -62,3 +62,7 @@ As linhas de folga agora são exibidas no HTML com o texto padronizado `FOLGA`, 
 ### Gestão de contatos e horários de folga
 
 A aba `Gestão de Contatos` agora recarrega a planilha selecionada na Etapa 3 e salva as alterações no mesmo arquivo escolhido. As linhas `FOLGA` dos HTMLs exibem `-` em Pré, Início e Fim, em vez de `00:00`.
+
+### Correção PPV e legenda da Etapa 2
+
+A saída `Check_Pre_Envio_Gerado.xlsx` recria a aba `Legenda` em toda execução, com título, cabeçalhos, significados dos status e o alerta de `Mudança de Canal`. No parser Premiere/PPV, uma linha separada `PRÉ-HORA` é vinculada por data e confronto (`mandante` + `visitante`), sem depender da igualdade entre os canais textuais `PRE/GE TV` e `PREMIERE`.
