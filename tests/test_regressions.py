@@ -22,7 +22,10 @@ try:
         GeradorEscalasApp,
         _build_elenco_value,
         _build_email_subject,
+        _build_group_email_subject,
+        _combine_html_bodies,
         _extract_html_period,
+        _group_html_files_by_recipient,
         _html_delivery_metadata,
         _is_empty_transition_row,
         _split_scale_weeks,
@@ -31,7 +34,10 @@ except ModuleNotFoundError:
     GeradorEscalasApp = None
     _build_elenco_value = None
     _build_email_subject = None
+    _build_group_email_subject = None
+    _combine_html_bodies = None
     _extract_html_period = None
+    _group_html_files_by_recipient = None
     _html_delivery_metadata = None
     _is_empty_transition_row = None
     _split_scale_weeks = None
@@ -240,6 +246,84 @@ class EngineRegressionTests(unittest.TestCase):
                 _build_email_subject("André Felipe", True, "10/08/2026 a 16/08/2026"),
                 "Prévia da sua escala - André Felipe (10/08/2026 a 16/08/2026)",
             )
+
+            grouped = _group_html_files_by_recipient(tmp)
+            self.assertEqual(list(grouped), ["André Felipe"])
+            deliveries = grouped["André Felipe"]
+            self.assertEqual(len(deliveries), 2)
+            bodies = []
+            for _, _, filename, _ in deliveries:
+                bodies.append((Path(tmp) / filename).read_text(encoding="utf-8"))
+            combined = _combine_html_bodies(bodies)
+            self.assertEqual(combined.lower().count("escala consolidada:"), 1)
+            self.assertEqual(combined.lower().count("prévia da sua escala:"), 1)
+            self.assertEqual(combined.count("<section class=\"escala-semana\">"), 2)
+            self.assertIn("Escala e prévia - André Felipe", _build_group_email_subject("André Felipe", deliveries))
+
+            import logging
+            import gerador_escalas_desktop as stage3_module
+
+            class DummyMail:
+                def __init__(self):
+                    self.Subject = ""
+                    self.To = ""
+                    self.HTMLBody = ""
+                    self.displayed = False
+
+                def Display(self):
+                    self.displayed = True
+
+            class DummyOutlook:
+                def __init__(self):
+                    self.mails = []
+
+                def CreateItem(self, _item_type):
+                    mail = DummyMail()
+                    self.mails.append(mail)
+                    return mail
+
+            class DummyWin32:
+                def __init__(self):
+                    self.outlook = DummyOutlook()
+
+                def Dispatch(self, _name):
+                    return self.outlook
+
+            class DummyApp:
+                def __init__(self):
+                    self.logger = logging.getLogger("test_stage3_grouped_email")
+                    self.logs = []
+                    self.progress = []
+
+                def log(self, message, *args, **kwargs):
+                    self.logs.append(str(message))
+
+                def show_error(self, *args, **kwargs):
+                    raise AssertionError(f"show_error inesperado: {args}")
+
+                def set_progress(self, value, message):
+                    self.progress.append((value, message))
+
+            previous_win32 = stage3_module.win32_client
+            fake_win32 = DummyWin32()
+            stage3_module.win32_client = fake_win32
+            try:
+                result = GeradorEscalasApp.enviar_emails(
+                    DummyApp(),
+                    tmp,
+                    contacts={"andré felipe": "andre@example.com"},
+                )
+            finally:
+                stage3_module.win32_client = previous_win32
+            self.assertEqual(result["encontrados"], 2)
+            self.assertEqual(result["rascunhos"], 1)
+            self.assertEqual(result["ignorados"], 0)
+            self.assertEqual(len(fake_win32.outlook.mails), 1)
+            mail = fake_win32.outlook.mails[0]
+            self.assertTrue(mail.displayed)
+            self.assertIn("Escala e prévia - André Felipe", mail.Subject)
+            self.assertEqual(mail.HTMLBody.lower().count("escala consolidada:"), 1)
+            self.assertEqual(mail.HTMLBody.lower().count("prévia da sua escala:"), 1)
 
     def test_html_preserves_elenco_product_and_event_fields(self):
         from pathlib import Path

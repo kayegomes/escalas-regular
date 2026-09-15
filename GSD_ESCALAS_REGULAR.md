@@ -331,3 +331,11 @@ O corpo também incorpora o aviso de que mudanças podem ocorrer e que dias sem 
 Antes de gerar novamente, os HTMLs antigos do diretório de saída são removidos para impedir duplicidade de rascunhos. Escalas de até sete dias continuam gerando um único HTML e um único rascunho com o formato tradicional.
 
 Foi adicionada a regressão `test_two_week_scale_generates_separate_preview_html`, que valida 14 dias divididos em 03/08/2026–09/08/2026 e 10/08/2026–16/08/2026, o texto de prévia, o período, os assuntos e a compatibilidade com uma semana.
+
+## 19. Etapa 3 — duas semanas no mesmo e-mail
+
+A regra foi refinada: para uma escala de duas semanas, os HTMLs continuam sendo gerados separadamente, um por semana, mas não devem gerar dois e-mails. O método de rascunhos agora agrupa os arquivos pelo profissional, ordena as semanas e combina os corpos HTML em um único documento de e-mail, inserindo uma separação visual entre as semanas.
+
+Assim, cada profissional recebe um único rascunho Outlook contendo a `Escala consolidada` da primeira semana e a `Prévia da sua escala` da segunda semana, ambas com seus períodos explícitos. O assunto agrupado usa o formato `Escala e prévia - Nome (escala: período; prévia: período)`. Para uma escala de uma semana, permanece um único HTML e um único rascunho com o assunto tradicional.
+
+A regressão `test_two_week_scale_generates_separate_preview_html` agora também usa um Outlook falso e confirma que dois HTMLs encontrados produzem exatamente um rascunho, cujo corpo contém os dois títulos semanais e cujo assunto identifica a combinação.

@@ -151,6 +151,60 @@ def _build_email_subject(nome, is_preview, period="", teste=False):
     return f"[TESTE] {subject}" if teste else subject
 
 
+def _group_html_files_by_recipient(html_dir):
+    grouped = {}
+    for filename in sorted(os.listdir(html_dir)):
+        if not filename.lower().endswith(".html"):
+            continue
+        nome, week_number, is_preview = _html_delivery_metadata(filename)
+        file_path = os.path.join(html_dir, filename)
+        try:
+            with open(file_path, "r", encoding="utf-8") as html_file:
+                period = _extract_html_period(html_file.read())
+        except OSError:
+            period = ""
+        grouped.setdefault(nome, []).append((week_number, is_preview, filename, period))
+    for entries in grouped.values():
+        entries.sort(key=lambda item: (item[0], item[2].casefold()))
+    return grouped
+
+
+def _html_document_body(html_body):
+    match = re.search(r"<body[^>]*>(.*)</body>", html_body, flags=re.IGNORECASE | re.DOTALL)
+    return match.group(1) if match else html_body
+
+
+def _html_document_styles(html_body):
+    styles = re.findall(r"<style[^>]*>.*?</style>", html_body, flags=re.IGNORECASE | re.DOTALL)
+    return "\n".join(styles)
+
+
+def _combine_html_bodies(html_bodies):
+    if not html_bodies:
+        return ""
+    styles = _html_document_styles(html_bodies[0])
+    sections = []
+    for index, html_body in enumerate(html_bodies):
+        body = _html_document_body(html_body)
+        separator = "" if index == 0 else '<hr style="margin:28px 0;border:0;border-top:2px solid #d9d9d9;">'
+        sections.append(f"{separator}<section class=\"escala-semana\">{body}</section>")
+    return f"<html><head><meta charset=\"utf-8\">{styles}</head><body>{''.join(sections)}</body></html>"
+
+
+def _build_group_email_subject(nome, deliveries, teste=False):
+    if len(deliveries) <= 1:
+        _, is_preview, _ = deliveries[0]
+        period = deliveries[0][3] if len(deliveries[0]) > 3 else ""
+        return _build_email_subject(nome, is_preview, period, teste=teste)
+    periods = []
+    for delivery in deliveries:
+        week_number, is_preview, filename, period = delivery
+        label = "prévia" if is_preview else "escala"
+        periods.append(f"{label}: {period}" if period else label)
+    subject = f"Escala e prévia - {nome} ({'; '.join(periods)})"
+    return f"[TESTE] {subject}" if teste else subject
+
+
 def _build_elenco_value(row, recipient_name=""):
     """Combina participantes e remove o profissional que recebe a escala."""
     people = []
@@ -1292,13 +1346,16 @@ class GeradorEscalasApp:
         import difflib
 
         arquivos = sorted(f for f in os.listdir(html_dir) if f.lower().endswith(".html"))
-        self.log(f"Foram encontrados {len(arquivos)} arquivos HTML.")
+        grouped = _group_html_files_by_recipient(html_dir)
+        self.log(
+            f"Foram encontrados {len(arquivos)} arquivos HTML para "
+            f"{len(grouped)} profissional(is)."
+        )
         rascunhos = 0
         ignorados = 0
         erros = 0
 
-        for index, arquivo in enumerate(arquivos, start=1):
-            nome, week_number, is_preview = _html_delivery_metadata(arquivo)
+        for index, (nome, deliveries) in enumerate(grouped.items(), start=1):
             email_dest = teste_destinatario if teste else contacts.get(nome.lower(), "")
             if not teste and not email_dest:
                 matches = difflib.get_close_matches(nome.lower(), contacts.keys(), n=1, cutoff=0.7)
@@ -1310,13 +1367,15 @@ class GeradorEscalasApp:
                 self.log(f"Rascunho ignorado para {nome}: contato sem e-mail válido.", logging.WARNING)
                 continue
 
-            caminho_completo = os.path.join(html_dir, arquivo)
             try:
-                with open(caminho_completo, "r", encoding="utf-8") as f:
-                    html_body = f.read()
+                html_bodies = []
+                for _, _, arquivo, _ in deliveries:
+                    caminho_completo = os.path.join(html_dir, arquivo)
+                    with open(caminho_completo, "r", encoding="utf-8") as html_file:
+                        html_bodies.append(html_file.read())
 
-                period = _extract_html_period(html_body)
-                subject = _build_email_subject(nome, is_preview, period, teste=teste)
+                html_body = _combine_html_bodies(html_bodies)
+                subject = _build_group_email_subject(nome, deliveries, teste=teste)
 
                 mail = outlook.CreateItem(0)
                 mail.Subject = subject
@@ -1325,13 +1384,19 @@ class GeradorEscalasApp:
                 # Display cria o rascunho e deixa o envio sob conferência humana.
                 mail.Display()
                 rascunhos += 1
-                self.log(f"Rascunho preparado para {nome} ({email_dest}).")
+                self.log(
+                    f"Rascunho preparado para {nome} ({email_dest}) com "
+                    f"{len(deliveries)} HTML(s)."
+                )
             except Exception as e:
                 erros += 1
                 self.logger.exception("Erro ao criar rascunho para %s", nome)
                 self.log(f"Erro ao gerar rascunho para {nome}: {e}", logging.ERROR)
 
-            self.set_progress(88 + int((index / max(len(arquivos), 1)) * 10), f"Rascunho {index}/{len(arquivos)}")
+            self.set_progress(
+                88 + int((index / max(len(grouped), 1)) * 10),
+                f"Rascunho {index}/{len(grouped)}",
+            )
 
         resumo = f"{rascunhos} rascunhos preparados; {ignorados} ignorados; {erros} erros."
         self.log(f"Pronto! {resumo} O envio continua manual no Outlook.")

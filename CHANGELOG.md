@@ -105,3 +105,8 @@ Também foi criado o alerta `Horário a Confirmar` para linhas encontradas na gr
 ## Etapa 3 — escalas de duas semanas em mensagens separadas
 
 A geração de HTMLs e rascunhos Outlook agora divide escalas com mais de sete dias em blocos semanais. A primeira semana é enviada como escala consolidada; a segunda é gerada separadamente como `Prévia da sua escala`, com o período explícito no corpo, no título do HTML e no assunto do rascunho. Escalas de uma semana permanecem com um único arquivo e um único rascunho.
+
+
+## Etapa 3 — dois HTMLs no mesmo rascunho Outlook
+
+Corrigido o agrupamento dos envios: em escalas de duas semanas, os HTMLs permanecem separados por período, mas são combinados no mesmo corpo de um único rascunho Outlook por profissional. O assunto informa `Escala e prévia` e os dois períodos. Escalas de uma semana continuam gerando um único HTML e um único rascunho.
