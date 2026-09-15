@@ -93,3 +93,10 @@ O parser Sportv passou a considerar uma reprise distinta (`R`/`REPRISE`) como li
 ## Correção de 07/09/2026 — Seleção Sportv às 12:55
 
 Corrigido o desempate de janelas repetidas da Seleção Sportv. Quando existe uma linha transmissiva `V` às 12:55 e uma continuação sem marcador às 13:30, a linha V próxima ao horário do relatório passa a prevalecer. Belle Suarez passou a iniciar às 12:55 e terminar às 15:15, com status `OK`.
+
+
+## Correção da nova amostra — Sportv 5 e horário a confirmar
+
+O parser passou a reconhecer o quinto bloco Sportv quando a grade não fornece cabeçalhos nomeados para `Hora`, `V/I`, `Evento` e `Observação`, identificando o rótulo `SPORTV5`/`SPORTV 5` e normalizando os eventos como `SPORTV5`.
+
+Também foi criado o alerta `Horário a Confirmar` para linhas encontradas na grade do Combate cujo Pré, Início ou Fim esteja marcado como `A CONFIRMAR`. O alerta `A Confirmar` continua reservado ao próprio evento marcado como a confirmar. Na nova amostra, Power Slap 23 passou a ser classificado como `Horário a Confirmar`, e 16 registros Sportv 5 foram lidos.

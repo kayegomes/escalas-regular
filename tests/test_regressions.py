@@ -16,7 +16,7 @@ from app_support import (
 from engine_2405 import _event_score, _normalize_channel, _normalize_text
 from engine_2468 import _is_ge_tv_row, _team_key
 from engine_cross import _score_grade_match
-from engine_grades import _consolidate_grade_dataframe_windows, _extend_grade_windows_to_next_event, _merge_repeated_grade_windows, _time_key, extract_sportv_channel_block, process_premiere_grade
+from engine_grades import _consolidate_grade_dataframe_windows, _extend_grade_windows_to_next_event, _merge_repeated_grade_windows, _time_key, extract_sportv_channel_block, flatten_sportv_grade, process_premiere_grade
 try:
     from gerador_escalas_desktop import GeradorEscalasApp, _build_elenco_value, _is_empty_transition_row
 except ModuleNotFoundError:
@@ -30,6 +30,7 @@ from engine_cross import (
     _is_folga_row,
     _is_programa,
     _is_quickhold_in_scale,
+    _is_time_to_confirmar,
     _is_valid_time_str,
 )
 
@@ -216,6 +217,52 @@ class EngineRegressionTests(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(str(match["Início"]), "12:55")
         self.assertEqual(str(match["V/I"]), "V")
+
+    def test_sportv5_unnamed_block_is_flattened(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'sportv5.xlsx'
+            columns = [None] * 32
+            columns[0] = 'DATA GRADE'
+            columns[4] = 'DATA REAL'
+            columns[7] = 'Data'
+            columns[8] = 'Hora'
+            columns[9] = 'V/I'
+            columns[10] = 'Evento/Programa'
+            columns[15] = 'Evento/Programa.1'
+            columns[20] = 'Evento/Programa.2'
+            columns[25] = 'Evento/Programa.3'
+            channel_row = [None] * 32
+            channel_row[4] = '2026-09-17'
+            channel_row[28] = 'SPORTV5'
+            event_row = [None, None, None, None, '2026-09-17', None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, '12:00', 'V', 'CIRCUITO MUNDIAL DE SURFE', 'ETAPA DE TRESTLES']
+            rows = [
+                [None] * 32,
+                [None] * 32,
+                columns,
+                channel_row,
+                event_row,
+            ]
+            pd.DataFrame(rows).to_excel(path, index=False, header=False)
+            grades = flatten_sportv_grade(str(path))
+            sportv5 = grades[grades['Plataforma'].astype(str).str.upper().eq('SPORTV5')]
+            self.assertGreaterEqual(len(sportv5), 1)
+            self.assertTrue(sportv5['Evento'].astype(str).str.contains('CIRCUITO MUNDIAL DE SURFE').any())
+
+    def test_combate_keeps_a_confirmar_time_marker(self):
+        from pathlib import Path
+        from engine_grades import process_combate_grade
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'combate_confirmar.xlsx'
+            pd.DataFrame([
+                {'DATA': '2026-09-17', 'INÍCIO': 'A CONFIRMAR', 'FIM': 'A CONFIRMAR', 'PRÉ': 'X', 'EVENTO': 'POWER SLAP 23', 'COMBATE': 'VIVO', 'SPORTV': ''},
+            ]).to_excel(path, index=False)
+            grades = process_combate_grade(str(path))
+            row = grades.iloc[0]
+            self.assertEqual(str(row['Início']), 'A CONFIRMAR')
+            self.assertEqual(str(row['Fim']), 'A CONFIRMAR')
+            self.assertTrue(_is_time_to_confirmar(row['Início']))
+            self.assertFalse(_is_time_to_confirmar('15:00'))
 
     def test_tv_globo_event_without_globo_grade_is_not_matched_to_sportv(self):
         row = pd.Series({

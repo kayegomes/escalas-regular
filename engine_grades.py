@@ -60,6 +60,26 @@ def flatten_sportv_grade(file_path):
             else:
                 extract_sportv_channel_block(df, idx, flat_events, date_col)
 
+        # Algumas versões da grade exibem o quinto canal nas colunas 28–32,
+        # mas deixam o cabeçalho dessas colunas vazio. O rótulo SPORTV5 aparece
+        # no próprio bloco; nesse layout, Hora/V-I/Evento/Observação ficam em
+        # 28/29/30/31 e a data continua sendo a Data Real compartilhada.
+        if df.shape[1] >= 32:
+            tail_text = df.iloc[:, 27:32].astype(str).apply(lambda col: col.str.upper())
+            has_sportv5_block = tail_text.apply(
+                lambda col: col.str.contains(r"SPORTV\s*5", regex=True, na=False)
+            ).any().any()
+            if has_sportv5_block:
+                extract_sportv_channel_block(
+                    df,
+                    30,
+                    flat_events,
+                    date_col,
+                    hora_col_idx=28,
+                    vi_col_idx=29,
+                    obs_col_idx=31,
+                )
+
         df_flat = pd.DataFrame(flat_events)
         if not df_flat.empty:
             # Clean up
@@ -224,14 +244,31 @@ def _merge_repeated_grade_windows(block_events):
     return merged
 
 
-def extract_sportv_channel_block(df, evento_col_idx, flat_events, date_col=None):
+def extract_sportv_channel_block(
+    df,
+    evento_col_idx,
+    flat_events,
+    date_col=None,
+    data_col_idx=None,
+    hora_col_idx=None,
+    vi_col_idx=None,
+    obs_col_idx=None,
+):
     col_evento = df.columns[evento_col_idx]
-    col_obs = df.columns[evento_col_idx + 1] if (evento_col_idx + 1) < len(df.columns) else None
+    col_obs = df.columns[obs_col_idx] if obs_col_idx is not None and obs_col_idx < len(df.columns) else (
+        df.columns[evento_col_idx + 1] if (evento_col_idx + 1) < len(df.columns) else None
+    )
 
-    # Try to find Data, Hora, V/I to the left
-    col_data = df.columns[evento_col_idx - 3] if evento_col_idx >= 3 else None
-    col_hora = df.columns[evento_col_idx - 2] if evento_col_idx >= 2 else None
-    col_vi = df.columns[evento_col_idx - 1] if evento_col_idx >= 1 else None
+    # Os quatro primeiros blocos têm a estrutura Data/Hora/V-I/Evento/Obs
+    # imediatamente alinhada. O Sportv 5 de algumas versões vem sem
+    # cabeçalho nomeado e usa colunas próprias de Hora/V-I/Evento/Obs.
+    col_data = df.columns[data_col_idx] if data_col_idx is not None and data_col_idx < len(df.columns) else None
+    col_hora = df.columns[hora_col_idx] if hora_col_idx is not None and hora_col_idx < len(df.columns) else (
+        df.columns[evento_col_idx - 2] if evento_col_idx >= 2 else None
+    )
+    col_vi = df.columns[vi_col_idx] if vi_col_idx is not None and vi_col_idx < len(df.columns) else (
+        df.columns[evento_col_idx - 1] if evento_col_idx >= 1 else None
+    )
     col_canal = df.columns[evento_col_idx + 3] if (evento_col_idx + 3) < len(df.columns) else None
 
     # Os blocos horizontais usam cinco colunas por canal:

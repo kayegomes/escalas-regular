@@ -298,3 +298,24 @@ A correção adiciona um desempate controlado: linhas com marcador transmissivo 
 | Belle Suarez | `-` | **`12:55`** | `15:15` | `OK` |
 
 Foi adicionada a regressão `test_transmissive_selection_row_wins_over_unmarked_continuation`. A suíte passou com 44 testes OK e 3 ignorados por arquivos/dependências opcionais. A validação completa preservou os casos de André Loffredo, Antero Neto, Premiere e a aba Legenda.
+
+## 17. Correção da nova amostra — Sportv 5 e horário `A CONFIRMAR` no Combate
+
+A nova amostra de setembro mostrou que o quinto canal Sportv aparece em um bloco horizontal sem cabeçalhos nomeados. Nessas versões da grade, o layout usa as colunas 28–31 para Hora, V/I, Evento e Observação, enquanto o rótulo `SPORTV5` aparece no próprio bloco. O parser anterior só detectava colunas cujo cabeçalho continha `Evento/Programa`, portanto não incluía o quinto canal na grade normalizada.
+
+O parser passou a detectar esse bloco especial quando identifica `SPORTV5` ou `SPORTV 5` e a extrair os eventos como plataforma `SPORTV5`. Na amostra nova, foram normalizados 16 registros Sportv 5, incluindo surfe e Pré-Olímpico Masculino de Vôlei.
+
+Também foi identificado o caso Power Slap 23, no Combate, em 17/09/2026. O relatório possui o evento com horário operacional 15:00–18:00, enquanto a grade contém Início e Fim como `A CONFIRMAR`. Isso não significa que o evento esteja ausente da grade; significa que o horário do evento ainda não está confirmado.
+
+Foi criado o novo alerta **`Horário a Confirmar`**, separado de **`A Confirmar`**. O primeiro é aplicado quando Pré, Início ou Fim da linha encontrada na grade está marcado como `A CONFIRMAR`. O segundo continua reservado ao próprio texto do evento na grade marcado como a confirmar.
+
+Resultado validado para a nova amostra:
+
+| Caso | Resultado |
+|---|---|
+| Sportv 5 | 16 registros normalizados como `SPORTV5` |
+| Power Slap 23 | 2 pessoas com status `Horário a Confirmar` |
+| Check | Abas `Sheet1` e `Legenda` preservadas |
+| Suíte | 46 testes OK e 3 ignorados por arquivos/dependências opcionais |
+
+A saída da nova amostra apresentou 525 registros `OK`, 46 `Conferir Pré`, 31 `Horário não encontrado na Grade`, 26 `Fallback (Multimodalidade)` e 2 `Horário a Confirmar`.

@@ -76,6 +76,12 @@ def _is_quickhold_in_scale(row):
     )
 
 
+def _is_time_to_confirmar(value):
+    if value is None or pd.isna(value):
+        return False
+    return "A CONFIRMAR" in _norm_text(value)
+
+
 def _is_valid_time_str(val):
     if val is None or pd.isna(val):
         return False
@@ -617,7 +623,16 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
                 fim_fmt = _format_time_value(fim_grade)
                 pre_fmt = _format_time_value(pre_grade)
 
-                if not _is_valid_time_str(inicio_fmt):
+                horario_pendente = any(
+                    _is_time_to_confirmar(value)
+                    for value in (inicio_grade, pre_grade, fim_grade)
+                )
+                if horario_pendente:
+                    alertas.append("Horário a Confirmar")
+                    if severity == "OK":
+                        severity = "YELLOW"
+                    out_row["Pré"] = "-"
+                elif not _is_valid_time_str(inicio_fmt):
                     severity = _mark_missing_grade(out_row, alertas, severity)
                 else:
                     has_valid_grade_time = True
@@ -772,6 +787,7 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
         ("Fallback (Multimodalidade)", "Correspondência encontrada em modalidade com maior risco de variação de nomenclatura, como surfe ou tênis; revisar manualmente."),
         ("Mudança de Canal", "Evento encontrado no mesmo dia, mas em canal diferente do canal da escala; o horário foi confirmado na grade."),
         ("A Confirmar", "A grade encontrou o evento, mas o próprio registro está marcado como a confirmar."),
+        ("Horário a Confirmar", "O evento foi encontrado, mas Pré, Início ou Fim da grade está marcado como A CONFIRMAR."),
         ("Local Ausente", "A atividade não possui local de locução preenchido no relatório."),
         ("Sem Grades Fornecidas", "Não foi fornecida uma grade válida para executar o cruzamento."),
     ]
@@ -784,6 +800,7 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
         "Fallback (Multimodalidade)": PatternFill(start_color="FFFCE4D6", end_color="FFFCE4D6", fill_type="solid"),
         "Mudança de Canal": PatternFill(start_color="FFDDEBF7", end_color="FFDDEBF7", fill_type="solid"),
         "A Confirmar": PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid"),
+        "Horário a Confirmar": PatternFill(start_color="FFFFE699", end_color="FFFFE699", fill_type="solid"),
         "Local Ausente": PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid"),
     }
     for row_idx, (status, meaning) in enumerate(status_legend, start=4):
