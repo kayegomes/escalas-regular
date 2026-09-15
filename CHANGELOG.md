@@ -100,3 +100,8 @@ Corrigido o desempate de janelas repetidas da Seleção Sportv. Quando existe um
 O parser passou a reconhecer o quinto bloco Sportv quando a grade não fornece cabeçalhos nomeados para `Hora`, `V/I`, `Evento` e `Observação`, identificando o rótulo `SPORTV5`/`SPORTV 5` e normalizando os eventos como `SPORTV5`.
 
 Também foi criado o alerta `Horário a Confirmar` para linhas encontradas na grade do Combate cujo Pré, Início ou Fim esteja marcado como `A CONFIRMAR`. O alerta `A Confirmar` continua reservado ao próprio evento marcado como a confirmar. Na nova amostra, Power Slap 23 passou a ser classificado como `Horário a Confirmar`, e 16 registros Sportv 5 foram lidos.
+
+
+## Etapa 3 — escalas de duas semanas em mensagens separadas
+
+A geração de HTMLs e rascunhos Outlook agora divide escalas com mais de sete dias em blocos semanais. A primeira semana é enviada como escala consolidada; a segunda é gerada separadamente como `Prévia da sua escala`, com o período explícito no corpo, no título do HTML e no assunto do rascunho. Escalas de uma semana permanecem com um único arquivo e um único rascunho.

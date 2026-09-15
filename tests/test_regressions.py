@@ -18,11 +18,23 @@ from engine_2468 import _is_ge_tv_row, _team_key
 from engine_cross import _score_grade_match
 from engine_grades import _consolidate_grade_dataframe_windows, _extend_grade_windows_to_next_event, _merge_repeated_grade_windows, _time_key, extract_sportv_channel_block, flatten_sportv_grade, process_premiere_grade
 try:
-    from gerador_escalas_desktop import GeradorEscalasApp, _build_elenco_value, _is_empty_transition_row
+    from gerador_escalas_desktop import (
+        GeradorEscalasApp,
+        _build_elenco_value,
+        _build_email_subject,
+        _extract_html_period,
+        _html_delivery_metadata,
+        _is_empty_transition_row,
+        _split_scale_weeks,
+    )
 except ModuleNotFoundError:
     GeradorEscalasApp = None
     _build_elenco_value = None
+    _build_email_subject = None
+    _extract_html_period = None
+    _html_delivery_metadata = None
     _is_empty_transition_row = None
+    _split_scale_weeks = None
 from engine_cross import (
     _append_pre_review_alerts,
     _mark_missing_grade,
@@ -162,6 +174,72 @@ class EngineRegressionTests(unittest.TestCase):
             self.assertIn(">FOLGA<", html)
             self.assertNotIn("Day Off / Folga", html)
             self.assertNotIn(">00:00<", html)
+
+    @unittest.skipIf(GeradorEscalasApp is None, "Tkinter não disponível neste ambiente")
+    def test_two_week_scale_generates_separate_preview_html(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            dates = pd.date_range("2026-08-03", periods=14, freq="D")
+            df = pd.DataFrame({
+                "Nome": ["André Felipe"] * 14,
+                "Data": dates.strftime("%d/%m/%Y"),
+                "Data_obj": dates,
+                "Data_fim_obj": dates,
+                "Dia": dates.strftime("%A"),
+                "Plataforma": ["Sportv"] * 14,
+                "Pré": ["-"] * 14,
+                "Início": ["12:00"] * 14,
+                "Fim": ["13:00"] * 14,
+                "Evento/Programa": [f"Evento {i}" for i in range(14)],
+                "Produto (WO/Quick Hold)": ["Produto"] * 14,
+                "Local de Locução": ["Narração By JB"] * 14,
+                "Elenco": ["Vander Carioca"] * 14,
+                "Narrador": ["André Felipe"] * 14,
+                "Comentarista": ["Vander Carioca"] * 14,
+                "Repórter": ["-"] * 14,
+                "Coordenador": ["-"] * 14,
+                "Produtor": ["-"] * 14,
+            })
+            weeks = _split_scale_weeks(df)
+            self.assertEqual(len(weeks), 2)
+            self.assertEqual(len(weeks[0][1]), 7)
+            self.assertEqual(len(weeks[1][1]), 7)
+            self.assertEqual(weeks[0][2].strftime("%d/%m/%Y"), "03/08/2026")
+            self.assertEqual(weeks[0][3].strftime("%d/%m/%Y"), "09/08/2026")
+            self.assertEqual(weeks[1][2].strftime("%d/%m/%Y"), "10/08/2026")
+            self.assertEqual(weeks[1][3].strftime("%d/%m/%Y"), "16/08/2026")
+            self.assertEqual(len(_split_scale_weeks(df.iloc[:7].copy())), 1)
+
+            GeradorEscalasApp.gerar_html(
+                object(), "André Felipe", weeks[0][1], tmp,
+                week_number=1, is_preview=False,
+                period_start=weeks[0][2], period_end=weeks[0][3],
+            )
+            GeradorEscalasApp.gerar_html(
+                object(), "André Felipe", weeks[1][1], tmp,
+                week_number=2, is_preview=True,
+                period_start=weeks[1][2], period_end=weeks[1][3],
+            )
+            html_files = sorted(Path(tmp).glob("escala_*.html"))
+            self.assertEqual(len(html_files), 2)
+            preview_path = next(path for path in html_files if "previa_semana_2" in path.name)
+            preview_html = preview_path.read_text(encoding="utf-8")
+            self.assertIn("prévia da semana seguinte", preview_html.lower())
+            self.assertIn("Prévia da sua escala: 10/08/2026 a 16/08/2026", preview_html)
+            self.assertIn("ATENÇÃO:", preview_html)
+            self.assertEqual(_extract_html_period(preview_html), "10/08/2026 a 16/08/2026")
+            self.assertEqual(
+                _html_delivery_metadata(preview_path.name),
+                ("André Felipe", 2, True),
+            )
+            self.assertEqual(
+                _build_email_subject("André Felipe", False, "03/08/2026 a 09/08/2026"),
+                "Escala - André Felipe (03/08/2026 a 09/08/2026)",
+            )
+            self.assertEqual(
+                _build_email_subject("André Felipe", True, "10/08/2026 a 16/08/2026"),
+                "Prévia da sua escala - André Felipe (10/08/2026 a 16/08/2026)",
+            )
 
     def test_html_preserves_elenco_product_and_event_fields(self):
         from pathlib import Path

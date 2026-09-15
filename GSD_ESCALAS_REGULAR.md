@@ -319,3 +319,15 @@ Resultado validado para a nova amostra:
 | Suíte | 46 testes OK e 3 ignorados por arquivos/dependências opcionais |
 
 A saída da nova amostra apresentou 525 registros `OK`, 46 `Conferir Pré`, 31 `Horário não encontrado na Grade`, 26 `Fallback (Multimodalidade)` e 2 `Horário a Confirmar`.
+
+## 18. Etapa 3 — separação de escalas de duas semanas
+
+Quando a escala de um profissional cobre mais de sete dias, a Etapa 3 passa a dividi-la em blocos consecutivos de sete dias a partir do início do período. Cada bloco recebe um HTML separado e, no modo de rascunho, gera um e-mail separado no Outlook.
+
+A primeira semana usa o texto de escala consolidada da próxima semana e o assunto `Escala - Nome (período)`. A segunda semana e os blocos seguintes usam o texto `prévia da semana seguinte`, o título `Prévia da sua escala: período` e o assunto `Prévia da sua escala - Nome (período)`.
+
+O corpo também incorpora o aviso de que mudanças podem ocorrer e que dias sem escala não representam erro, pois podem estar em aberto aguardando definição. Os arquivos de prévia usam o sufixo `_previa_semana_2`, permitindo que o processo de rascunhos identifique corretamente o destinatário sem incluir o sufixo no nome da pessoa.
+
+Antes de gerar novamente, os HTMLs antigos do diretório de saída são removidos para impedir duplicidade de rascunhos. Escalas de até sete dias continuam gerando um único HTML e um único rascunho com o formato tradicional.
+
+Foi adicionada a regressão `test_two_week_scale_generates_separate_preview_html`, que valida 14 dias divididos em 03/08/2026–09/08/2026 e 10/08/2026–16/08/2026, o texto de prévia, o período, os assuntos e a compatibilidade com uma semana.

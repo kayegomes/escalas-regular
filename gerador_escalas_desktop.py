@@ -71,6 +71,86 @@ def _format_date_range(value):
     return start_text if start == end else f"{start_text} para {end_text}"
 
 
+def _scale_period_bounds(df):
+    """Retorna o primeiro e o último dia da escala a partir de Data_obj/Data_fim_obj."""
+    starts = pd.to_datetime(df.get("Data_obj", pd.Series(dtype="datetime64[ns]")), errors="coerce")
+    ends = pd.to_datetime(df.get("Data_fim_obj", pd.Series(dtype="datetime64[ns]")), errors="coerce")
+    starts = starts.dropna()
+    ends = ends.dropna()
+    if starts.empty:
+        return pd.NaT, pd.NaT
+    start = starts.min().normalize()
+    end = (ends.max() if not ends.empty else starts.max()).normalize()
+    return start, end
+
+
+def _split_scale_weeks(df):
+    """Divide uma escala em blocos consecutivos de sete dias."""
+    if df is None or df.empty:
+        return []
+
+    starts = pd.to_datetime(df.get("Data_obj"), errors="coerce")
+    start, end = _scale_period_bounds(df)
+    if pd.isna(start) or pd.isna(end):
+        return [(1, df.copy(), pd.NaT, pd.NaT)]
+
+    total_days = (end - start).days + 1
+    if total_days <= 7:
+        return [(1, df.copy(), start, end)]
+
+    chunks = []
+    week_number = 1
+    bucket_start = start
+    start_days = starts.dt.normalize()
+    while bucket_start <= end:
+        bucket_end = min(bucket_start + pd.Timedelta(days=6), end)
+        mask = start_days.between(bucket_start, bucket_end, inclusive="both")
+        part = df.loc[mask].copy()
+        if not part.empty:
+            chunks.append((week_number, part, bucket_start, bucket_end))
+            week_number += 1
+        bucket_start = bucket_end + pd.Timedelta(days=1)
+
+    return chunks or [(1, df.copy(), start, end)]
+
+
+def _format_period_dates(period_start, period_end):
+    if pd.isna(period_start) or pd.isna(period_end):
+        return "Período não informado"
+    return f"{period_start.strftime('%d/%m/%Y')} a {period_end.strftime('%d/%m/%Y')}"
+
+
+def _html_delivery_metadata(filename):
+    """Retorna nome, número da semana e se o arquivo é uma prévia."""
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    if stem.startswith("escala_"):
+        stem = stem[len("escala_"):]
+    preview_match = re.search(r"_previa_semana_(\d+)$", stem, flags=re.IGNORECASE)
+    if preview_match:
+        week_number = int(preview_match.group(1))
+        stem = stem[: preview_match.start()]
+    else:
+        week_number = 1
+    return stem.replace("_", " "), week_number, week_number > 1
+
+
+def _extract_html_period(html_body):
+    match = re.search(
+        r"<(?:h3|p)[^>]*>\s*(?:Escala consolidada|Prévia da sua escala)\s*:\s*([^<]+)",
+        html_body,
+        flags=re.IGNORECASE,
+    )
+    return match.group(1).strip() if match else ""
+
+
+def _build_email_subject(nome, is_preview, period="", teste=False):
+    prefix = "Prévia da sua escala" if is_preview else "Escala"
+    subject = f"{prefix} - {nome}"
+    if period:
+        subject += f" ({period})"
+    return f"[TESTE] {subject}" if teste else subject
+
+
 def _build_elenco_value(row, recipient_name=""):
     """Combina participantes e remove o profissional que recebe a escala."""
     people = []
@@ -944,12 +1024,35 @@ class GeradorEscalasApp:
             html_dir_name = self.config.get("outputs", {}).get("html_dir", "escalas_geradas_html")
             output_dir = os.path.join(os.path.dirname(check_path), html_dir_name)
             os.makedirs(output_dir, exist_ok=True)
+            old_html_files = [
+                file_name for file_name in os.listdir(output_dir)
+                if file_name.lower().endswith(".html")
+            ]
+            for old_html in old_html_files:
+                try:
+                    os.remove(os.path.join(output_dir, old_html))
+                except OSError:
+                    self.log(f"Não foi possível remover o HTML antigo: {old_html}", logging.WARNING)
+            if old_html_files:
+                self.log(f"{len(old_html_files)} HTMLs antigos removidos antes da nova geração.")
 
             total_profissionais = len(profissionais)
             for index, prof in enumerate(profissionais, start=1):
                 df_prof = df[df[nome_col] == prof]
                 if not df_prof.empty:
-                    self.gerar_html(prof, df_prof, output_dir)
+                    semanas = _split_scale_weeks(df_prof)
+                    if len(semanas) > 1:
+                        self.log(f"{prof}: escala dividida em {len(semanas)} semanas separadas.")
+                    for week_number, df_week, period_start, period_end in semanas:
+                        self.gerar_html(
+                            prof,
+                            df_week,
+                            output_dir,
+                            week_number=week_number,
+                            is_preview=week_number > 1,
+                            period_start=period_start,
+                            period_end=period_end,
+                        )
                 progress = 55 + int((index / total_profissionais) * 30)
                 self.set_progress(progress, f"HTML {index}/{total_profissionais}: {prof}")
 
@@ -974,7 +1077,16 @@ class GeradorEscalasApp:
             self._set_button_state(self.btn_etapa3, tk.NORMAL)
 
 
-    def gerar_html(self, nome, df, output_dir):
+    def gerar_html(
+        self,
+        nome,
+        df,
+        output_dir,
+        week_number=1,
+        is_preview=False,
+        period_start=None,
+        period_end=None,
+    ):
         html_template = """
         <html>
         <head>
@@ -993,6 +1105,7 @@ class GeradorEscalasApp:
                 th, td {{ border: 1px solid #ddd; padding: 6px; text-align: left; vertical-align: top; }}
                 th {{ background-color: #f2f2f2; font-weight: bold; }}
                 tr:nth-child(even) {{ background-color: #f9f9f9; }}
+                .attention {{ color: #c00000; font-weight: bold; margin: 18px 0; }}
             </style>
         </head>
         <body>
@@ -1000,13 +1113,15 @@ class GeradorEscalasApp:
                 <div class="greeting">
                     <h1>Oi {nome}</h1>
                     <p>Tudo bem?</p>
-                    <p>Envio abaixo a escala</p>
+                    <p>Seguindo a nossa rotina semanal, segue a sua {mensagem_periodo} ({periodo}).</p>
+                    <p><strong>Lembre-se que mudanças acontecem.</strong> Se for o caso, as alterações serão informadas pelas equipes responsáveis: Eventos/Programas/Redação/Conteúdo Digital.</p>
                 </div>
                 <div class="contact-box">
                     <strong>Dúvidas ou problemas? É só nos procurar:</strong>
                     <p>Leticia Alvares: (21) 97951-2324 | Carlla Amara: (21) 99242-1837</p>
                 </div>
-                <h3>Escala consolidada: {periodo}</h3>
+                <p class="attention"><strong>ATENÇÃO:</strong> Se tiver dias faltando na sua escala, não é erro! Apenas estão em aberto, aguardando definição. É importante podermos contar com você nessas datas.</p>
+                <h3>{titulo_periodo}: {periodo}</h3>
             <table>
                 <tr>
                     <th>Nome</th>
@@ -1048,7 +1163,9 @@ class GeradorEscalasApp:
             return html_lib.escape(text)
 
         period_dates = []
-        if "Data" in df.columns:
+        if period_start is not None and period_end is not None and pd.notna(period_start) and pd.notna(period_end):
+            periodo = _format_period_dates(period_start, period_end)
+        elif "Data" in df.columns:
             for value in df["Data"].tolist():
                 text = str(value).strip()
                 match = re.search(r"\d{1,2}/\d{1,2}/\d{4}", text)
@@ -1056,12 +1173,11 @@ class GeradorEscalasApp:
                 parsed = pd.to_datetime(date_source, errors="coerce", dayfirst=True)
                 if pd.notna(parsed):
                     period_dates.append(parsed)
-        if period_dates:
-            period_start = min(period_dates).strftime("%d/%m/%Y")
-            period_end = max(period_dates).strftime("%d/%m/%Y")
-            periodo = f"{period_start} a {period_end}"
-        else:
-            periodo = "Período não informado"
+        if period_start is None or period_end is None or pd.isna(period_start) or pd.isna(period_end):
+            if period_dates:
+                periodo = f"{min(period_dates).strftime('%d/%m/%Y')} a {max(period_dates).strftime('%d/%m/%Y')}"
+            else:
+                periodo = "Período não informado"
 
         rows_html = ""
         for _, row in df.iterrows():
@@ -1141,13 +1257,18 @@ class GeradorEscalasApp:
             rows_html += f"<td>{html_value(row.get('Produtor', '-'))}</td>"
             rows_html += "</tr>"
 
-        file_name = f"escala_{safe_filename(nome)}.html"
+        mensagem_periodo = "prévia da semana seguinte" if is_preview else "escala consolidada da próxima semana"
+        titulo_periodo = "Prévia da sua escala" if is_preview else "Escala consolidada"
+        file_suffix = f"_previa_semana_{week_number}" if is_preview else ""
+        file_name = f"escala_{safe_filename(nome)}{file_suffix}.html"
         file_path = os.path.join(output_dir, file_name)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(
                 html_template.format(
                     nome=html_lib.escape(str(nome)),
                     periodo=html_lib.escape(periodo),
+                    mensagem_periodo=html_lib.escape(mensagem_periodo),
+                    titulo_periodo=html_lib.escape(titulo_periodo),
                     rows=rows_html,
                 )
             )
@@ -1177,7 +1298,7 @@ class GeradorEscalasApp:
         erros = 0
 
         for index, arquivo in enumerate(arquivos, start=1):
-            nome = arquivo.replace("escala_", "").replace(".html", "").replace("_", " ")
+            nome, week_number, is_preview = _html_delivery_metadata(arquivo)
             email_dest = teste_destinatario if teste else contacts.get(nome.lower(), "")
             if not teste and not email_dest:
                 matches = difflib.get_close_matches(nome.lower(), contacts.keys(), n=1, cutoff=0.7)
@@ -1194,8 +1315,11 @@ class GeradorEscalasApp:
                 with open(caminho_completo, "r", encoding="utf-8") as f:
                     html_body = f.read()
 
+                period = _extract_html_period(html_body)
+                subject = _build_email_subject(nome, is_preview, period, teste=teste)
+
                 mail = outlook.CreateItem(0)
-                mail.Subject = f"[TESTE] Escala - {nome}" if teste else f"Escala - {nome}"
+                mail.Subject = subject
                 mail.To = email_dest
                 mail.HTMLBody = html_body
                 # Display cria o rascunho e deixa o envio sob conferência humana.
