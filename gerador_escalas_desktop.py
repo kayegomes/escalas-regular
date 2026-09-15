@@ -237,8 +237,8 @@ except ImportError:  # Fallback simples para ambientes de desenvolvimento sem tk
 from app_support import (
     OutputFileLockedError,
     append_execution_history,
-    is_valid_email,
     load_app_config,
+    split_email_addresses,
     safe_filename,
 )
 
@@ -1154,6 +1154,8 @@ class GeradorEscalasApp:
                 .contact-box {{ background: #f7f9fc; border-left: 4px solid #1683e8; padding: 18px 14px; margin-bottom: 24px; font-size: 16px; }}
                 .contact-box strong {{ display: block; margin-bottom: 12px; }}
                 .contact-box p {{ margin: 0; }}
+                .contact-table {{ width: auto; margin: 0; font-size: 14px; background: #fff; }}
+                .contact-table td {{ padding: 3px 8px; border: 1px solid #d9d9d9; }}
                 h3 {{ margin: 0 0 12px; color: #222; font-size: 17px; }}
                 table {{ border-collapse: collapse; width: 100%; font-size: 12px; }}
                 th, td {{ border: 1px solid #ddd; padding: 6px; text-align: left; vertical-align: top; }}
@@ -1172,7 +1174,15 @@ class GeradorEscalasApp:
                 </div>
                 <div class="contact-box">
                     <strong>Dúvidas ou problemas? É só nos procurar:</strong>
-                    <p>Leticia Alvares: (21) 97951-2324 | Carlla Amara: (21) 99242-1837</p>
+                    <table class="contact-table">
+                        <tr><td>Claudio Rolim</td><td>(21) 99767-9446</td></tr>
+                        <tr><td>Leticia Alvares</td><td>(21) 99645-5219</td></tr>
+                        <tr><td>Juliana Vasconcellos</td><td>(21) 99027-9306</td></tr>
+                        <tr><td>Carlla Amara</td><td>(21) 99242-1837</td></tr>
+                        <tr><td>Evelyn Zygiel</td><td>(21) 97385-6772</td></tr>
+                        <tr><td>Luan Sanchez</td><td>(21) 97521-2048</td></tr>
+                        <tr><td>Julia Silva Pereira (logística)</td><td>(21) 97480-7758</td></tr>
+                    </table>
                 </div>
                 <p class="attention"><strong>ATENÇÃO:</strong> Se tiver dias faltando na sua escala, não é erro! Apenas estão em aberto, aguardando definição. É importante podermos contar com você nessas datas.</p>
                 <h3>{titulo_periodo}: {periodo}</h3>
@@ -1356,13 +1366,15 @@ class GeradorEscalasApp:
         erros = 0
 
         for index, (nome, deliveries) in enumerate(grouped.items(), start=1):
-            email_dest = teste_destinatario if teste else contacts.get(nome.lower(), "")
-            if not teste and not email_dest:
+            email_raw = teste_destinatario if teste else contacts.get(nome.lower(), "")
+            if not teste and not email_raw:
                 matches = difflib.get_close_matches(nome.lower(), contacts.keys(), n=1, cutoff=0.7)
                 if matches:
-                    email_dest = contacts[matches[0]]
+                    email_raw = contacts[matches[0]]
 
-            if not is_valid_email(email_dest):
+            email_addresses = split_email_addresses(email_raw)
+            email_dest = "; ".join(email_addresses)
+            if not email_dest:
                 ignorados += 1
                 self.log(f"Rascunho ignorado para {nome}: contato sem e-mail válido.", logging.WARNING)
                 continue

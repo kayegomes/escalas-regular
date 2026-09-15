@@ -12,6 +12,7 @@ from app_support import (
     is_valid_email,
     safe_filename,
     save_with_fallback,
+    split_email_addresses,
 )
 from engine_2405 import _event_score, _normalize_channel, _normalize_text
 from engine_2468 import _is_ge_tv_row, _team_key
@@ -62,6 +63,10 @@ class AppSupportTests(unittest.TestCase):
         self.assertTrue(is_valid_email("pessoa@example.com"))
         self.assertFalse(is_valid_email("sem-email"))
         self.assertFalse(is_valid_email(""))
+        self.assertEqual(
+            split_email_addresses("a@example.com; b@example.com, a@example.com; inválido"),
+            ["a@example.com", "b@example.com"],
+        )
 
     def test_save_with_fallback_when_original_is_locked(self):
         calls = []
@@ -311,7 +316,7 @@ class EngineRegressionTests(unittest.TestCase):
                 result = GeradorEscalasApp.enviar_emails(
                     DummyApp(),
                     tmp,
-                    contacts={"andré felipe": "andre@example.com"},
+                    contacts={"andré felipe": "andre@example.com; second@example.com; andre@example.com"},
                 )
             finally:
                 stage3_module.win32_client = previous_win32
@@ -321,6 +326,7 @@ class EngineRegressionTests(unittest.TestCase):
             self.assertEqual(len(fake_win32.outlook.mails), 1)
             mail = fake_win32.outlook.mails[0]
             self.assertTrue(mail.displayed)
+            self.assertEqual(mail.To, "andre@example.com; second@example.com")
             self.assertIn("Escala e prévia - André Felipe", mail.Subject)
             self.assertEqual(mail.HTMLBody.lower().count("escala consolidada:"), 1)
             self.assertEqual(mail.HTMLBody.lower().count("prévia da sua escala:"), 1)
@@ -355,8 +361,20 @@ class EngineRegressionTests(unittest.TestCase):
             self.assertIn("Oi André Felipe", html)
             self.assertIn("Escala consolidada: 10/08/2026 a 10/08/2026", html)
             self.assertIn("Dúvidas ou problemas? É só nos procurar:", html)
-            self.assertIn("Leticia Alvares: (21) 97951-2324", html)
-            self.assertIn("Carlla Amara: (21) 99242-1837", html)
+            self.assertIn("Claudio Rolim", html)
+            self.assertIn("(21) 99767-9446", html)
+            self.assertIn("Leticia Alvares", html)
+            self.assertIn("(21) 99645-5219", html)
+            self.assertIn("Juliana Vasconcellos", html)
+            self.assertIn("(21) 99027-9306", html)
+            self.assertIn("Carlla Amara", html)
+            self.assertIn("(21) 99242-1837", html)
+            self.assertIn("Evelyn Zygiel", html)
+            self.assertIn("(21) 97385-6772", html)
+            self.assertIn("Luan Sanchez", html)
+            self.assertIn("(21) 97521-2048", html)
+            self.assertIn("Julia Silva Pereira (logística)", html)
+            self.assertIn("(21) 97480-7758", html)
             self.assertIn("CAMPEONATO SUL-AMERICANO MASCULINO DE FUTSAL SUB-17/2026/NA", html)
             self.assertIn("EQUADOR X BRASIL", html)
             self.assertIn("Narração By JB", html)

@@ -140,11 +140,37 @@ def is_valid_email(value: str) -> bool:
     return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", text))
 
 
+def split_email_addresses(value: str) -> list[str]:
+    """Extrai e-mails válidos de uma célula com endereços separados por ``;`` ou ``,``."""
+
+    text = str(value or "").strip()
+    if not text:
+        return []
+    addresses = []
+    seen = set()
+    for item in re.split(r"[;,]", text):
+        address = item.strip()
+        key = address.casefold()
+        if address and key not in seen and is_valid_email(address):
+            addresses.append(address)
+            seen.add(key)
+    return addresses
+
+
+def first_valid_email(value: str) -> str:
+    """Retorna o primeiro endereço válido de uma célula de contatos."""
+
+    addresses = split_email_addresses(value)
+    return addresses[0] if addresses else ""
+
+
 __all__ = [
     "OutputFileLockedError",
     "append_execution_history",
     "fallback_path",
     "is_valid_email",
+    "split_email_addresses",
+    "first_valid_email",
     "load_app_config",
     "safe_filename",
     "save_with_fallback",

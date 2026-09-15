@@ -110,3 +110,10 @@ A geração de HTMLs e rascunhos Outlook agora divide escalas com mais de sete d
 ## Etapa 3 — dois HTMLs no mesmo rascunho Outlook
 
 Corrigido o agrupamento dos envios: em escalas de duas semanas, os HTMLs permanecem separados por período, mas são combinados no mesmo corpo de um único rascunho Outlook por profissional. O assunto informa `Escala e prévia` e os dois períodos. Escalas de uma semana continuam gerando um único HTML e um único rascunho.
+
+
+## Etapa 3 — contatos completos e múltiplos destinatários
+
+Atualizado o bloco de contatos dos HTMLs com Claudio Rolim, Leticia Alvares, Juliana Vasconcellos, Carlla Amara, Evelyn Zygiel, Luan Sanchez e Julia Silva Pereira (logística), incluindo os telefones do modelo enviado.
+
+Corrigida a leitura da aba de contatos quando o campo `Email` contém vários endereços separados por `;` ou `,`. Os endereços válidos são normalizados, duplicidades são removidas e todos são colocados no campo `Para` do mesmo rascunho Outlook, separados por ponto e vírgula.

@@ -339,3 +339,21 @@ A regra foi refinada: para uma escala de duas semanas, os HTMLs continuam sendo 
 Assim, cada profissional recebe um único rascunho Outlook contendo a `Escala consolidada` da primeira semana e a `Prévia da sua escala` da segunda semana, ambas com seus períodos explícitos. O assunto agrupado usa o formato `Escala e prévia - Nome (escala: período; prévia: período)`. Para uma escala de uma semana, permanece um único HTML e um único rascunho com o assunto tradicional.
 
 A regressão `test_two_week_scale_generates_separate_preview_html` agora também usa um Outlook falso e confirma que dois HTMLs encontrados produzem exatamente um rascunho, cujo corpo contém os dois títulos semanais e cujo assunto identifica a combinação.
+
+## 20. Etapa 3 — contatos do modelo e múltiplos e-mails
+
+O bloco de contatos dos HTMLs foi atualizado conforme o modelo enviado pelo usuário:
+
+| Contato | Telefone |
+|---|---|
+| Claudio Rolim | (21) 99767-9446 |
+| Leticia Alvares | (21) 99645-5219 |
+| Juliana Vasconcellos | (21) 99027-9306 |
+| Carlla Amara | (21) 99242-1837 |
+| Evelyn Zygiel | (21) 97385-6772 |
+| Luan Sanchez | (21) 97521-2048 |
+| Julia Silva Pereira (logística) | (21) 97480-7758 |
+
+A coluna `Email` da aba `Lista e-mails` pode conter vários endereços separados por ponto e vírgula ou vírgula. A função `split_email_addresses` agora separa, limpa, valida e remove duplicidades. O rascunho Outlook recebe todos os endereços válidos no campo `Para`, separados por `; `. Se nenhum endereço válido existir, o profissional é ignorado com alerta no log.
+
+A regressão de agrupamento semanal também cobre esse caso, confirmando que dois HTMLs geram um único rascunho e que uma célula com `andre@example.com; second@example.com; andre@example.com` resulta em `andre@example.com; second@example.com` no destinatário.
