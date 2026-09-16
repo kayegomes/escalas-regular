@@ -28,6 +28,9 @@ DEFAULT_CONFIG = {
         "report_2468": "(2468) Esporte - Atividades de Equipe – Sub-Atividades_v2_ (9).xlsx",
         "contacts": "contatos_nova_versao.xlsx",
     },
+    "email": {
+        "cc": "#GESTAO-TRANSMISSOES-PROGRAMAS",
+    },
 }
 
 

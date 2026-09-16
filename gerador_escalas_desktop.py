@@ -1391,6 +1391,10 @@ class GeradorEscalasApp:
                 mail = outlook.CreateItem(0)
                 mail.Subject = subject
                 mail.To = email_dest
+                cc_dest = self.config.get("email", {}).get(
+                    "cc", "#GESTAO-TRANSMISSOES-PROGRAMAS"
+                )
+                mail.CC = cc_dest
                 mail.HTMLBody = html_body
                 # Display cria o rascunho e deixa o envio sob conferência humana.
                 mail.Display()

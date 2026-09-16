@@ -122,3 +122,8 @@ Corrigida a leitura da aba de contatos quando o campo `Email` contém vários en
 ## Correção do rascunho Outlook com múltiplos e-mails
 
 Corrigido o erro `too many values to unpack (expected 3)` na geração de rascunhos. O agrupamento semanal agora é compatível tanto com um único HTML quanto com várias semanas, mantendo os quatro campos internos do agrupamento. O caso real de contatos com múltiplos e-mails foi validado com sucesso.
+
+
+## Etapa 3 — restauração do Cc interno
+
+Restaurado o preenchimento automático do campo `Cc` dos rascunhos Outlook com `#GESTAO-TRANSMISSOES-PROGRAMAS`. O destinatário foi colocado em configuração externa (`app_config.json`) e mantém um valor padrão no código. O campo `Para` continua suportando múltiplos e-mails separados por `;` ou `,`.

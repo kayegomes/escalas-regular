@@ -273,6 +273,7 @@ class EngineRegressionTests(unittest.TestCase):
                     self.Subject = ""
                     self.To = ""
                     self.HTMLBody = ""
+                    self.CC = ""
                     self.displayed = False
 
                 def Display(self):
@@ -299,6 +300,7 @@ class EngineRegressionTests(unittest.TestCase):
                     self.logger = logging.getLogger("test_stage3_grouped_email")
                     self.logs = []
                     self.progress = []
+                    self.config = {"email": {"cc": "#GESTAO-TRANSMISSOES-PROGRAMAS"}}
 
                 def log(self, message, *args, **kwargs):
                     self.logs.append(str(message))
@@ -327,6 +329,7 @@ class EngineRegressionTests(unittest.TestCase):
             mail = fake_win32.outlook.mails[0]
             self.assertTrue(mail.displayed)
             self.assertEqual(mail.To, "andre@example.com; second@example.com")
+            self.assertEqual(mail.CC, "#GESTAO-TRANSMISSOES-PROGRAMAS")
             self.assertIn("Escala e prévia - André Felipe", mail.Subject)
             self.assertEqual(mail.HTMLBody.lower().count("escala consolidada:"), 1)
             self.assertEqual(mail.HTMLBody.lower().count("prévia da sua escala:"), 1)
