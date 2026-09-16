@@ -193,8 +193,7 @@ def _combine_html_bodies(html_bodies):
 
 def _build_group_email_subject(nome, deliveries, teste=False):
     if len(deliveries) <= 1:
-        _, is_preview, _ = deliveries[0]
-        period = deliveries[0][3] if len(deliveries[0]) > 3 else ""
+        _, is_preview, _, period = deliveries[0]
         return _build_email_subject(nome, is_preview, period, teste=teste)
     periods = []
     for delivery in deliveries:

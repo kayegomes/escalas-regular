@@ -357,3 +357,9 @@ O bloco de contatos dos HTMLs foi atualizado conforme o modelo enviado pelo usu�
 A coluna `Email` da aba `Lista e-mails` pode conter vários endereços separados por ponto e vírgula ou vírgula. A função `split_email_addresses` agora separa, limpa, valida e remove duplicidades. O rascunho Outlook recebe todos os endereços válidos no campo `Para`, separados por `; `. Se nenhum endereço válido existir, o profissional é ignorado com alerta no log.
 
 A regressão de agrupamento semanal também cobre esse caso, confirmando que dois HTMLs geram um único rascunho e que uma célula com `andre@example.com; second@example.com; andre@example.com` resulta em `andre@example.com; second@example.com` no destinatário.
+
+## 21. Correção do erro de rascunho com múltiplos e-mails
+
+Na versão anterior, a geração do rascunho falhava com `too many values to unpack (expected 3)`. A causa era a função `_group_html_files_by_recipient` armazenar cada HTML como uma tupla de quatro campos — número da semana, indicador de prévia, nome do arquivo e período — enquanto `_build_group_email_subject` ainda tentava desempacotar três campos no caso de um único HTML.
+
+A função foi alinhada para aceitar os quatro campos. A validação com a planilha real de contatos anexada confirmou o caso de Arnaldo Oliveira: a célula `arnaldofisio@hotmail.com; juliana.mattos@g.globo; yuri.magalhaes@g.globo;` foi normalizada para os três endereços válidos, um único rascunho foi criado pelo Outlook simulado e nenhum erro ocorreu.

@@ -117,3 +117,8 @@ Corrigido o agrupamento dos envios: em escalas de duas semanas, os HTMLs permane
 Atualizado o bloco de contatos dos HTMLs com Claudio Rolim, Leticia Alvares, Juliana Vasconcellos, Carlla Amara, Evelyn Zygiel, Luan Sanchez e Julia Silva Pereira (logística), incluindo os telefones do modelo enviado.
 
 Corrigida a leitura da aba de contatos quando o campo `Email` contém vários endereços separados por `;` ou `,`. Os endereços válidos são normalizados, duplicidades são removidas e todos são colocados no campo `Para` do mesmo rascunho Outlook, separados por ponto e vírgula.
+
+
+## Correção do rascunho Outlook com múltiplos e-mails
+
+Corrigido o erro `too many values to unpack (expected 3)` na geração de rascunhos. O agrupamento semanal agora é compatível tanto com um único HTML quanto com várias semanas, mantendo os quatro campos internos do agrupamento. O caso real de contatos com múltiplos e-mails foi validado com sucesso.
