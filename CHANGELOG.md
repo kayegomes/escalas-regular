@@ -125,5 +125,7 @@ Corrigido o erro `too many values to unpack (expected 3)` na geração de rascun
 
 
 ## Etapa 3 — restauração do Cc interno
-
 Restaurado o preenchimento automático do campo `Cc` dos rascunhos Outlook com `#GESTAO-TRANSMISSOES-PROGRAMAS`. O destinatário foi colocado em configuração externa (`app_config.json`) e mantém um valor padrão no código. O campo `Para` continua suportando múltiplos e-mails separados por `;` ou `,`.
+
+## Etapa 3 — prévia compacta no rascunho de escalas de duas semanas
+Corrigido o corpo dos rascunhos de escalas com mais de sete dias. A segunda semana continua com título e período próprios, mas seu HTML agora contém somente a tabela correspondente, no formato de prévia do modelo enviado. No rascunho Outlook, a saudação, os contatos e o aviso aparecem uma única vez; abaixo deles ficam as tabelas da escala consolidada e da prévia, separadas visualmente.

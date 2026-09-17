@@ -182,13 +182,66 @@ def _html_document_styles(html_body):
 def _combine_html_bodies(html_bodies):
     if not html_bodies:
         return ""
+    if len(html_bodies) == 1:
+        return html_bodies[0]
     styles = _html_document_styles(html_bodies[0])
-    sections = []
-    for index, html_body in enumerate(html_bodies):
+    first_body = _html_document_body(html_bodies[0])
+    container_match = re.search(
+        r"(<div\s+class=[\"']container[\"'][^>]*>)(.*)(</div>)",
+        first_body,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not container_match:
+        sections = []
+        for index, html_body in enumerate(html_bodies):
+            body = _html_document_body(html_body)
+            separator = "" if index == 0 else '<hr style="margin:28px 0;border:0;border-top:2px solid #d9d9d9;">'
+            sections.append(f"{separator}<section class=\"escala-semana\">{body}</section>")
+        return f"<html><head><meta charset=\"utf-8\">{styles}</head><body>{''.join(sections)}</body></html>"
+
+    first_container_open, first_container_inner, first_container_close = container_match.groups()
+    header_pattern = (
+        r"(<div\s+class=[\"']greeting[\"'][^>]*>.*?</div>\s*"
+        r"<div\s+class=[\"']contact-box[\"'][^>]*>.*?</div>\s*"
+        r"<p\s+class=[\"']attention[\"'][^>]*>.*?</p>\s*)"
+    )
+    first_header_match = re.search(
+        header_pattern,
+        first_container_inner,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not first_header_match:
+        return f"<html><head><meta charset=\"utf-8\">{styles}</head><body>{first_body}</body></html>"
+
+    shared_header = first_header_match.group(1)
+    sections = [first_container_inner[first_header_match.end():].strip()]
+    for html_body in html_bodies[1:]:
         body = _html_document_body(html_body)
-        separator = "" if index == 0 else '<hr style="margin:28px 0;border:0;border-top:2px solid #d9d9d9;">'
-        sections.append(f"{separator}<section class=\"escala-semana\">{body}</section>")
-    return f"<html><head><meta charset=\"utf-8\">{styles}</head><body>{''.join(sections)}</body></html>"
+        body_container_match = re.search(
+            r"<div\s+class=[\"']container[\"'][^>]*>(.*)</div>",
+            body,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        body_inner = body_container_match.group(1) if body_container_match else body
+        body_header_match = re.search(
+            header_pattern,
+            body_inner,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        sections.append(
+            body_inner[body_header_match.end():].strip()
+            if body_header_match
+            else body_inner.strip()
+        )
+
+    separator = '<hr style="margin:28px 0;border:0;border-top:2px solid #d9d9d9;">'
+    combined_sections = separator.join(
+        f'<section class="escala-semana">{section}</section>'
+        for section in sections
+    )
+    combined_inner = f"{shared_header}{combined_sections}"
+    combined_container = f"{first_container_open}{combined_inner}{first_container_close}"
+    return f"<html><head><meta charset=\"utf-8\">{styles}</head><body>{combined_container}</body></html>"
 
 
 def _build_group_email_subject(nome, deliveries, teste=False):
@@ -1325,16 +1378,45 @@ class GeradorEscalasApp:
         file_suffix = f"_previa_semana_{week_number}" if is_preview else ""
         file_name = f"escala_{safe_filename(nome)}{file_suffix}.html"
         file_path = os.path.join(output_dir, file_name)
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(
-                html_template.format(
-                    nome=html_lib.escape(str(nome)),
-                    periodo=html_lib.escape(periodo),
-                    mensagem_periodo=html_lib.escape(mensagem_periodo),
-                    titulo_periodo=html_lib.escape(titulo_periodo),
-                    rows=rows_html,
-                )
+        rendered_html = html_template.format(
+            nome=html_lib.escape(str(nome)),
+            periodo=html_lib.escape(periodo),
+            mensagem_periodo=html_lib.escape(mensagem_periodo),
+            titulo_periodo=html_lib.escape(titulo_periodo),
+            rows=rows_html,
+        )
+        if is_preview:
+            body = _html_document_body(rendered_html)
+            body = re.sub(
+                r"\s*<div\s+class=[\"']greeting[\"'][^>]*>.*?</div>",
+                "",
+                body,
+                count=1,
+                flags=re.IGNORECASE | re.DOTALL,
             )
+            body = re.sub(
+                r"\s*<div\s+class=[\"']contact-box[\"'][^>]*>.*?</div>",
+                "",
+                body,
+                count=1,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            body = re.sub(
+                r"\s*<p\s+class=[\"']attention[\"'][^>]*>.*?</p>",
+                "",
+                body,
+                count=1,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            rendered_html = re.sub(
+                r"(<body[^>]*>).*?(</body>)",
+                lambda match: f"{match.group(1)}{body}{match.group(2)}",
+                rendered_html,
+                count=1,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(rendered_html)
 
     def enviar_emails(self, html_dir, contacts, teste=False, teste_destinatario=""):
         self.log("Conectando ao Outlook e preparando rascunhos...")

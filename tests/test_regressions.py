@@ -235,9 +235,11 @@ class EngineRegressionTests(unittest.TestCase):
             self.assertEqual(len(html_files), 2)
             preview_path = next(path for path in html_files if "previa_semana_2" in path.name)
             preview_html = preview_path.read_text(encoding="utf-8")
-            self.assertIn("prévia da semana seguinte", preview_html.lower())
+            self.assertIn("Prévia da sua escala", preview_html)
             self.assertIn("Prévia da sua escala: 10/08/2026 a 16/08/2026", preview_html)
-            self.assertIn("ATENÇÃO:", preview_html)
+            self.assertNotIn("Oi André Felipe", preview_html)
+            self.assertNotIn("Dúvidas ou problemas? É só nos procurar:", preview_html)
+            self.assertNotIn("ATENÇÃO:", preview_html)
             self.assertEqual(_extract_html_period(preview_html), "10/08/2026 a 16/08/2026")
             self.assertEqual(
                 _html_delivery_metadata(preview_path.name),
@@ -263,6 +265,10 @@ class EngineRegressionTests(unittest.TestCase):
             self.assertEqual(combined.lower().count("escala consolidada:"), 1)
             self.assertEqual(combined.lower().count("prévia da sua escala:"), 1)
             self.assertEqual(combined.count("<section class=\"escala-semana\">"), 2)
+            self.assertEqual(combined.count("Oi André Felipe"), 1)
+            self.assertEqual(combined.count("Dúvidas ou problemas? É só nos procurar:"), 1)
+            self.assertEqual(combined.count("ATENÇÃO:"), 1)
+            self.assertEqual(combined.count("<html>"), 1)
             self.assertIn("Escala e prévia - André Felipe", _build_group_email_subject("André Felipe", deliveries))
 
             import logging

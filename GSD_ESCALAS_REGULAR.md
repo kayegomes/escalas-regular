@@ -3,7 +3,7 @@
 **Projeto:** Teste escalas regular
 **Repositório:** [kayegomes/escalas-regular](https://github.com/kayegomes/escalas-regular)
 **Branch principal:** `main`
-**Última atualização deste GSD:** 08/09/2026
+**Última atualização deste GSD:** 17/09/2026
 **Idioma de trabalho:** Português do Brasil
 **Objetivo:** manter uma memória persistente, verificável e operacional do sistema desktop Python/Tkinter usado para validar e enviar internamente escalas.
 
@@ -369,3 +369,11 @@ A função foi alinhada para aceitar os quatro campos. A validação com a plani
 Os rascunhos Outlook voltaram a preencher o campo `Cc` com `#GESTAO-TRANSMISSOES-PROGRAMAS`, conforme o fluxo de envio interno. O valor está configurado em `app_config.json` na seção `email.cc`, com o mesmo padrão no `DEFAULT_CONFIG` de `app_support.py`. O campo `Para` continua recebendo todos os e-mails válidos normalizados da célula de contatos.
 
 A regressão do agrupamento semanal verifica simultaneamente múltiplos destinatários em `Para` e o Cc fixo no rascunho simulado.
+
+## 23. Correção de 17/09/2026 — prévia compacta no mesmo rascunho
+
+Foi ajustado o formato da Etapa 3 para escalas com mais de sete dias. O HTML da segunda semana (`_previa_semana_2`) agora mantém somente o título `Prévia da sua escala: período` e a tabela daquele período, sem repetir saudação, bloco de contatos ou aviso geral. Esse formato corresponde ao modelo enviado pelo usuário.
+
+Na criação do rascunho Outlook, o primeiro HTML fornece o documento completo — saudação, contatos e aviso — e as semanas são inseridas como seções no mesmo documento. A primeira seção contém a `Escala consolidada` e a segunda contém a `Prévia da sua escala`, com períodos explícitos e separação visual. Dessa forma, cada profissional continua recebendo um único rascunho com as duas tabelas, mas o cabeçalho aparece apenas uma vez. Escalas de até sete dias continuam retornando o HTML original sem alteração.
+
+A regressão `test_two_week_scale_generates_separate_preview_html` foi atualizada para verificar que a prévia não contém cabeçalho repetido e que o corpo combinado contém exatamente uma saudação, um bloco de contatos, um aviso, dois títulos de período e um único documento HTML. A suíte passou com 47 testes OK e 3 ignorados por arquivos/dependências opcionais.
