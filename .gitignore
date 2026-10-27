@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
+# Build / distribuição (PyInstaller) — mantém build/*.spec versionado
+build/gerador_escalas/
+dist/
+
 # Arquivos operacionais e dados potencialmente sensíveis
 *.xlsx
 *.xlsm

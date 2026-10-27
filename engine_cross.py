@@ -1,4 +1,5 @@
 import os
+import re
 import unicodedata
 from datetime import timedelta
 
@@ -68,12 +69,16 @@ def _is_quickhold_in_scale(row):
         return False
     if "AUSENCIA MEDICA" in combined or ("AUSENCIA" in combined and "MEDICA" in combined):
         return False
+    if any(token in combined for token in ["FOLGA", "DAY OFF", "VACATION", "FERIAS", "COMP DAY"]):
+        return False
+    if "COMPROMISSO PESSOAL" in combined or "COPROMISSO PESSOAL" in combined:
+        return False
+    if "EVENTO PESSOAL" in combined:
+        return False
+    if "RESERVADO" in combined:
+        return False
 
-    return (
-        "PODCAST" in combined
-        or "CABINE DO JOGO" in combined
-        or ("PARTICIPACAO" in combined and "CABINE" in combined and "JOGO" in combined)
-    )
+    return True
 
 
 def _is_time_to_confirmar(value):
@@ -197,7 +202,7 @@ def _parse_time_seconds(time_val):
     return None
 
 
-def _score_grade_match(g_row, ev_norm, time_2468_sec=None):
+def _score_grade_match(g_row, ev_norm, time_2468_sec=None, plat_2468=None):
     g_ev = _norm_text(g_row.get("Evento"))
     if not g_ev:
         return -100
@@ -262,17 +267,29 @@ def _score_grade_match(g_row, ev_norm, time_2468_sec=None):
             if grade_vi in {"V", "I", "AO VIVO", "LIVE"} and diff_min <= 60:
                 score += 25
 
+    # _platform_match_mask trata todos os canais Sportv (1/2/3/4) como um
+    # único pool de busca, pois o mesmo conteúdo pode migrar de canal. Isso
+    # cria empates de score entre janelas em canais diferentes quando a
+    # proximidade de horário é igual; nesse caso, desempatar a favor do
+    # canal exatamente escalado evita escolher a janela errada (e um alerta
+    # de "Mudança de Canal" falso).
+    if plat_2468:
+        grade_plat_norm = _norm_text(g_row.get("Plataforma", "")).replace(" ", "")
+        plat_2468_norm = _norm_text(plat_2468).replace(" ", "")
+        if grade_plat_norm and plat_2468_norm and grade_plat_norm == plat_2468_norm:
+            score += 5
+
     return score
 
 
-def _match_event_in_pool(search_pool, ev_norm, time_2468_sec=None, min_score=1):
+def _match_event_in_pool(search_pool, ev_norm, time_2468_sec=None, min_score=1, plat_2468=None):
     if search_pool.empty or not ev_norm:
         return None
 
     best_score = -100
     best_row = None
     for _, g_row in search_pool.iterrows():
-        s = _score_grade_match(g_row, ev_norm, time_2468_sec)
+        s = _score_grade_match(g_row, ev_norm, time_2468_sec, plat_2468=plat_2468)
         if s > best_score:
             best_score = s
             best_row = g_row
@@ -301,13 +318,94 @@ def _mark_missing_grade(out_row, alertas, severity):
     return severity
 
 
-def _append_pre_review_alerts(out_row, alertas, severity, is_prog, has_valid_grade_time):
+def _is_aquecimento_delas(best_match=None, out_row=None, row_2468=None):
+    if best_match is not None:
+        pre_origem = str(best_match.get("Pré_Origem", "") or "").upper()
+        if "AQUECIMENTO DELAS" in pre_origem:
+            return True
+        pre_val = str(best_match.get("Pré", "") or "").upper()
+        if "AQUECIMENTO DELAS" in pre_val:
+            return True
+    if out_row is not None:
+        val_pre = str(out_row.get("Pré", "") or "").upper()
+        if "AQUECIMENTO DELAS" in val_pre:
+            return True
+        val_pre_origem = str(out_row.get("Pré_Origem", "") or "").upper()
+        if "AQUECIMENTO DELAS" in val_pre_origem:
+            return True
+    if row_2468 is not None:
+        desc = str(_find_column(row_2468, ["Evento/Programa", "Descrição", "Atividade/Descrição", "Evento"])).upper()
+        if "AQUECIMENTO DELAS" in desc:
+            return True
+    return False
+
+
+def _is_channel_tv_globo(plat_2468="", row_2468=None, best_match=None, out_row=None):
+    plat_norm = _norm_text(plat_2468)
+    if "TV GLOBO" in plat_norm or plat_norm in {"GLOBO", "REDE GLOBO", "TV GLOBO REDE"}:
+        return True
+    if "GLOBO" in plat_norm and "PLAY" not in plat_norm and "SPORTV" not in plat_norm:
+        return True
+
+    if row_2468 is not None:
+        raw_canal = _norm_text(_find_column(row_2468, ["Canal (Master Room)", "Plataforma", "Canal"]))
+        if "TV GLOBO" in raw_canal or raw_canal in {"GLOBO", "REDE GLOBO", "TV GLOBO REDE"}:
+            return True
+        if "GLOBO" in raw_canal and "PLAY" not in raw_canal and "SPORTV" not in raw_canal:
+            return True
+        cliente = _norm_text(_find_column(row_2468, ["Cliente", "Client"]))
+        if "GLOBO" in cliente and (not raw_canal or raw_canal in {"NAN", "NONE", "NAT", "-"}):
+            return True
+
+    if out_row is not None:
+        out_canal = _norm_text(out_row.get("Canal (Master Room)", out_row.get("Plataforma", "")))
+        if "TV GLOBO" in out_canal or out_canal in {"GLOBO", "REDE GLOBO", "TV GLOBO REDE"}:
+            return True
+        if "GLOBO" in out_canal and "PLAY" not in out_canal and "SPORTV" not in out_canal:
+            return True
+
+    if best_match is not None:
+        match_plat = _norm_text(best_match.get("Plataforma", ""))
+        if "TV GLOBO" in match_plat or match_plat in {"GLOBO", "REDE GLOBO", "TV GLOBO REDE"}:
+            return True
+        if "GLOBO" in match_plat and "PLAY" not in match_plat and "SPORTV" not in match_plat:
+            return True
+
+    return False
+
+
+def _append_pre_review_alerts(
+    out_row,
+    alertas,
+    severity,
+    is_prog,
+    has_valid_grade_time,
+    best_match=None,
+    row_2468=None,
+    plat_2468="",
+):
     """Aplica a regra de Pré para programas e eventos esportivos.
 
     Programas podem não ter Pré por natureza. Eventos esportivos, porém,
     precisam ser conferidos quando possuem Início, mas não possuem Pré válido,
     mesmo que a grade marque a coluna Pré como ``X``.
+    No caso do Pré ser "AQUECIMENTO DELAS", adiciona o status de revisão
+    "Aquecimento Delas".
+    No caso do canal ser "TV GLOBO", adiciona o status de revisão "TV Globo".
     """
+
+    if _is_aquecimento_delas(best_match, out_row, row_2468):
+        if "Aquecimento Delas" not in alertas:
+            alertas.append("Aquecimento Delas")
+        if severity == "OK":
+            severity = "YELLOW"
+
+    if _is_channel_tv_globo(plat_2468, row_2468, best_match, out_row):
+        if "TV Globo" not in alertas:
+            alertas.append("TV Globo")
+        if severity == "OK":
+            severity = "YELLOW"
+        return severity
 
     if is_prog or not has_valid_grade_time:
         return severity
@@ -529,11 +627,59 @@ def _find_best_grade_match(row_2468, df_grades):
         seen.add(pool_id)
 
         min_s = 1 if pool is match else 5
-        result = _match_event_in_pool(pool, ev_norm, time_2468_sec=time_2468_sec, min_score=min_s)
+        result = _match_event_in_pool(pool, ev_norm, time_2468_sec=time_2468_sec, min_score=min_s, plat_2468=plat_2468)
         if result is not None:
-            return result
+            return _extend_match_to_report_fim(result, row_2468, pool, ev_norm, plat_2468)
 
     return None
+
+
+def _extend_match_to_report_fim(matched_row, row_2468, pool, ev_norm, plat_2468, max_hops=4):
+    """Une blocos adjacentes da grade quando o 2468 declara um WO combinado.
+
+    Algumas WOs (ex.: "FINAL FEMININA E MASCULINA BOULDER") cobrem dois
+    marcadores consecutivos e distintos da grade (cada final é um bloco
+    próprio). O cruzamento por título/horário escolhe o primeiro bloco; se o
+    próprio 2468 declara um Fim mais tardio e existe um bloco seguinte
+    adjacente (começa exatamente onde o atual termina) com boa pontuação de
+    texto, estende o Fim até lá em vez de cortar no fim do primeiro bloco.
+    """
+
+    report_fim_sec = _parse_time_seconds(_find_column(row_2468, ["Fim", "FIM"]))
+    if report_fim_sec is None:
+        return matched_row
+
+    current = matched_row.copy()
+    platform_key = str(current.get("Plataforma", "")).upper()
+    date_key = str(current.get("Data", ""))[:10]
+
+    for _ in range(max_hops):
+        current_fim_sec = _parse_time_seconds(current.get("Fim"))
+        if current_fim_sec is None:
+            break
+        diff = (report_fim_sec - current_fim_sec) % 86400
+        if diff == 0 or diff > 6 * 3600:
+            break
+
+        same_block = pool[
+            (pool["Plataforma"].astype(str).str.upper() == platform_key)
+            & (pool["Data"].astype(str).str[:10] == date_key)
+        ]
+        next_row = None
+        for _, cand in same_block.iterrows():
+            if _parse_time_seconds(cand.get("Início")) != current_fim_sec:
+                continue
+            if _norm_text(cand.get("Evento")) == _norm_text(current.get("Evento")):
+                continue
+            if _score_grade_match(cand, ev_norm, plat_2468=plat_2468) >= 1:
+                next_row = cand
+                break
+
+        if next_row is None:
+            break
+        current["Fim"] = next_row.get("Fim")
+
+    return current
 
 
 def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path_co2):
@@ -552,7 +698,13 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
         total_antes = len(df_2468)
         funcao_col = next(c for c in df_2468.columns if _norm_text(c) == "FUNCAO")
         funcao_lower = df_2468[funcao_col].astype(str).str.strip().str.lower()
-        mask_talento = funcao_lower.str.contains("narrador", na=False) | funcao_lower.str.contains("coment", na=False)
+        # "Esp - Programas" lança seus colaboradores com Função "Colaboradores"
+        # (não Narrador/Comentarista); sem esse termo, a equipe inteira cai fora.
+        mask_talento = (
+            funcao_lower.str.contains("narrador", na=False)
+            | funcao_lower.str.contains("coment", na=False)
+            | funcao_lower.str.contains("colaborador", na=False)
+        )
         mask_folga = df_2468.apply(_is_folga_row, axis=1)
         mask_quickhold = df_2468.apply(_is_quickhold_in_scale, axis=1)
         df_2468 = df_2468[mask_talento | mask_folga | mask_quickhold]
@@ -584,6 +736,10 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
             local_narr = str(_find_column(row_2468, ["Local de Locução", "Local Narração", "Local"])).strip().upper()
             if local_narr in {"", "NAN", "NAT", "NONE"}:
                 alertas.append("Local Ausente")
+                severity = "YELLOW"
+            if _is_channel_tv_globo(plat_2468, row_2468, out_row=out_row):
+                if "TV Globo" not in alertas:
+                    alertas.append("TV Globo")
                 severity = "YELLOW"
             out_row["Pré"] = "-"
             out_row["Status Revisão"] = "OK" if not alertas else " | ".join(alertas)
@@ -656,7 +812,14 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
             # Não encontrado na grade pelo título. Os horários do relatório
             # ficam visíveis como referência, mas o status sempre sinaliza que
             # não houve confirmação, inclusive quando a atividade é programa.
-            severity = _mark_missing_grade(out_row, alertas, severity)
+            if _is_channel_tv_globo(plat_2468, row_2468, out_row=out_row):
+                if "TV Globo" not in alertas:
+                    alertas.append("TV Globo")
+                if severity == "OK":
+                    severity = "YELLOW"
+                out_row["Pré"] = "-"
+            else:
+                severity = _mark_missing_grade(out_row, alertas, severity)
 
         severity = _append_pre_review_alerts(
             out_row,
@@ -664,6 +827,9 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
             severity,
             is_prog,
             has_valid_grade_time,
+            best_match=best_match,
+            row_2468=row_2468,
+            plat_2468=plat_2468,
         )
 
         tipo_atividade = _norm_text(_find_column(row_2468, ["Tipo de Atividade", "Tipo Atividade"]))
@@ -680,11 +846,8 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
 
     df_out = pd.DataFrame(output_rows)
 
-    severity_map = {}
-    if "_severity" in df_out.columns:
-        severity_map = df_out["_severity"].to_dict()
-        df_out = df_out.drop(columns=["_severity"])
-
+    # "_severity" segue junto da linha até a ordenação final; o mapa de cores é
+    # montado só depois, pela posição real de cada linha na planilha.
     if "Data_raw" in df_out.columns:
         df_out = df_out.drop(columns=["Data_raw"])
 
@@ -736,8 +899,45 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
         "Coordenador",
         "Produtor",
     ]
+    if "Data" in df_out.columns:
+        def _get_sort_date(v):
+            if pd.isna(v) or not v:
+                return pd.NaT
+            txt = str(v).strip()
+            dates = re.findall(r"\d{1,2}/\d{1,2}/\d{4}", txt)
+            if dates:
+                return pd.to_datetime(dates[0], errors="coerce", dayfirst=True)
+            return pd.to_datetime(v, errors="coerce", dayfirst=True)
+
+        def _get_sort_time(t):
+            if not t or pd.isna(t) or str(t).strip() in {"-", "nan", "NaT", "None", "FOLGA"}:
+                return "99:99"
+            txt = str(t).strip()
+            if " " in txt:
+                txt = txt.split(" ")[-1]
+            parts = txt.split(":")
+            if len(parts) >= 2:
+                try:
+                    return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+                except ValueError:
+                    pass
+            return txt
+
+        df_out["_data_sort"] = df_out["Data"].apply(_get_sort_date)
+        df_out["_time_sort"] = df_out.get("Início", pd.Series(dtype=object)).apply(_get_sort_time)
+        name_col = "Nome " if "Nome " in df_out.columns else ("Nome" if "Nome" in df_out.columns else None)
+        sort_cols = [c for c in [name_col, "_data_sort", "_time_sort"] if c and c in df_out.columns]
+        df_out = df_out.sort_values(by=sort_cols, ascending=True, kind="stable", na_position="last")
+        df_out = df_out.drop(columns=["_data_sort", "_time_sort"], errors="ignore")
+
+    severity_map = {}
+    if "_severity" in df_out.columns:
+        severity_map = dict(enumerate(df_out["_severity"].tolist()))
+
     ordered_cols = [c for c in preferred_order if c in df_out.columns]
-    ordered_cols.extend([c for c in df_out.columns if c not in ordered_cols and c != "Status Revisão"])
+    ordered_cols.extend(
+        [c for c in df_out.columns if c not in ordered_cols and c not in ("Status Revisão", "_severity")]
+    )
     if "Status Revisão" in df_out.columns:
         ordered_cols.append("Status Revisão")
     df_out = df_out[ordered_cols]
@@ -783,6 +983,8 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
         ("OK", "Correspondência encontrada e sem alerta pendente. Programas sem Pré podem permanecer OK quando localizados na grade."),
         ("Conferir Pré", "Evento ou conteúdo transmissivo encontrado, mas sem horário de Pré válido. A conferência manual é necessária."),
         ("Pré igual ao Início", "O Pré e o horário de Início ficaram iguais; conferir se o Pré foi lançado corretamente na grade."),
+        ("Aquecimento Delas", "O Pré do evento corresponde ao programa 'Aquecimento Delas'; conferir escala e horário de transmissão."),
+        ("TV Globo", "Evento ou transmissão escalada na TV Globo; conferir horários e grade da emissora."),
         ("Horário não encontrado na Grade", "Nenhuma correspondência confiável foi encontrada. Os horários exibidos permanecem apenas como referência do relatório."),
         ("Fallback (Multimodalidade)", "Correspondência encontrada em modalidade com maior risco de variação de nomenclatura, como surfe ou tênis; revisar manualmente."),
         ("Mudança de Canal", "Evento encontrado no mesmo dia, mas em canal diferente do canal da escala; o horário foi confirmado na grade."),
@@ -797,6 +999,8 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
         "Sem Grades Fornecidas": PatternFill(start_color="FFFFC7CE", end_color="FFFFC7CE", fill_type="solid"),
         "Conferir Pré": PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid"),
         "Pré igual ao Início": PatternFill(start_color="FFFFE699", end_color="FFFFE699", fill_type="solid"),
+        "Aquecimento Delas": PatternFill(start_color="FFE1D5E7", end_color="FFE1D5E7", fill_type="solid"),
+        "TV Globo": PatternFill(start_color="FFB4C6E7", end_color="FFB4C6E7", fill_type="solid"),
         "Fallback (Multimodalidade)": PatternFill(start_color="FFFCE4D6", end_color="FFFCE4D6", fill_type="solid"),
         "Mudança de Canal": PatternFill(start_color="FFDDEBF7", end_color="FFDDEBF7", fill_type="solid"),
         "A Confirmar": PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid"),
@@ -842,10 +1046,15 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
             status_col_idx = col_idx
             break
 
+    # Status com entrada própria na Legenda recebem exatamente a cor do catálogo,
+    # para que a célula da planilha e a amostra da aba Legenda sejam idênticas.
+    legend_font = Font(bold=True, color="FF1F1F1F")
+
     if status_col_idx:
         for row_idx in range(2, ws.max_row + 1):
             status_cell = ws.cell(row=row_idx, column=status_col_idx)
             sev = severity_map.get(row_idx - 2, "OK")
+            status_text = str(status_cell.value or "").strip()
 
             if sev == "RED":
                 status_cell.fill = red_fill
@@ -864,6 +1073,11 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
             else:
                 status_cell.fill = green_fill
                 status_cell.font = white_font
+
+            # Alertas combinados (" | ") não constam da Legenda e mantêm a cor da severidade.
+            if status_text in legend_fills:
+                status_cell.fill = legend_fills[status_text]
+                status_cell.font = white_font if status_text == "OK" else legend_font
 
         max_len = len("Status Revisão")
         for row_idx in range(2, ws.max_row + 1):

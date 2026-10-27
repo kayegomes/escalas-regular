@@ -12,15 +12,18 @@ hiddenimports = [
 hiddenimports += collect_submodules("openpyxl")
 
 a = Analysis(
-    ["gerador_escalas_desktop.py"],
-    pathex=["."],
+    ["../gerador_escalas_desktop.py"],
+    pathex=[".."],
     binaries=[],
-    datas=[("app_config.json", ".")],
+    datas=[
+        ("../app_config.json", "."),
+        ("../contatos_nova_versao.xlsx", "."),
+    ],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=["lxml", "matplotlib", "scipy"],
     noarchive=False,
 )
 

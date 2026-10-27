@@ -63,12 +63,16 @@ def _is_quickhold_in_scale(row):
         return False
     if "AUSENCIA MEDICA" in combined or ("AUSENCIA" in combined and "MEDICA" in combined):
         return False
+    if any(token in combined for token in ["FOLGA", "DAY OFF", "VACATION", "FERIAS", "COMP DAY"]):
+        return False
+    if "COMPROMISSO PESSOAL" in combined or "COPROMISSO PESSOAL" in combined:
+        return False
+    if "EVENTO PESSOAL" in combined:
+        return False
+    if "RESERVADO" in combined:
+        return False
 
-    return (
-        "PODCAST" in combined
-        or "CABINE DO JOGO" in combined
-        or ("PARTICIPACAO" in combined and "CABINE" in combined and "JOGO" in combined)
-    )
+    return True
 
 
 def _ensure_columns(df, columns, fill_value=""):
@@ -101,24 +105,24 @@ def process_2468_base(file_path):
     Reads the 2468 report and consolidates roles by WO#.
     Preserves folgas and selected Quick Holds without WO# so they reach the check.
     """
-    xl = pd.ExcelFile(file_path)
-    sheet_to_read = None
-    for sheet_name in ["base (2)", "base MP", "Base MP"]:
-        if sheet_name in xl.sheet_names:
-            sheet_to_read = sheet_name
-            break
-
-    if not sheet_to_read:
-        sheet_to_read = xl.sheet_names[0]
-
     df = pd.DataFrame()
-    for header_row in [0, 1, 2]:
-        temp_df = xl.parse(sheet_to_read, header=header_row)
-        if "WO #" in temp_df.columns:
-            temp_df = temp_df.rename(columns={"WO #": "WO#"})
-        if "WO#" in temp_df.columns or "Nome" in temp_df.columns or "Nome " in temp_df.columns:
-            df = temp_df
-            break
+    with pd.ExcelFile(file_path) as xl:
+        sheet_to_read = None
+        for sheet_name in ["base (2)", "base MP", "Base MP"]:
+            if sheet_name in xl.sheet_names:
+                sheet_to_read = sheet_name
+                break
+
+        if not sheet_to_read:
+            sheet_to_read = xl.sheet_names[0]
+
+        for header_row in [0, 1, 2]:
+            temp_df = xl.parse(sheet_to_read, header=header_row)
+            if "WO #" in temp_df.columns:
+                temp_df = temp_df.rename(columns={"WO #": "WO#"})
+            if "WO#" in temp_df.columns or "Nome" in temp_df.columns or "Nome " in temp_df.columns:
+                df = temp_df
+                break
 
     if "WO#" not in df.columns:
         raise ValueError("Coluna 'WO#' nao encontrada no relatorio 2468.")
@@ -156,6 +160,14 @@ def process_2468_base(file_path):
         wo = row["__team_key"]
         nome = str(row.get("Nome", "")).strip()
         funcao = _norm_text(_get_first(row, ["Função", "FunÇõÇœo"])).lower()
+
+        # "Narração By SP/RJ" identifica o narrador/comentarista que atua
+        # remotamente como reserva (by), em vez do titular (Local de
+        # Locução = "Local"). Sem essa marca, o agrupamento da equipe do
+        # evento mistura titular e by sem distinção.
+        local_locucao = _norm_text(_get_first(row, ["Local de Locução", "Local Narração"]))
+        if nome and "BY" in local_locucao.split():
+            nome = f"{nome} (by)"
 
         if wo not in wo_team:
             wo_team[wo] = {

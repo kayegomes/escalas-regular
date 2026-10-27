@@ -13,18 +13,19 @@ def flatten_sportv_grade(file_path):
     Reads the horizontal SporTV grid and flattens it.
     """
     try:
-        xl = pd.ExcelFile(file_path)
-        # Assume first sheet is the grade
-        df_raw = xl.parse(xl.sheet_names[0], header=None)
+        df = pd.DataFrame()
+        with pd.ExcelFile(file_path) as xl:
+            # Assume first sheet is the grade
+            df_raw = xl.parse(xl.sheet_names[0], header=None)
 
-        # In the SporTV grid, row 3 (index 2) usually contains the dates? No, let's search for "DATA GRADE"
-        start_row = 0
-        for i, row in df_raw.iterrows():
-            if 'DATA' in str(row.values).upper() or 'EVENTO' in str(row.values).upper():
-                start_row = i
-                break
+            # In the SporTV grid, row 3 (index 2) usually contains the dates? No, let's search for "DATA GRADE"
+            start_row = 0
+            for i, row in df_raw.iterrows():
+                if 'DATA' in str(row.values).upper() or 'EVENTO' in str(row.values).upper():
+                    start_row = i
+                    break
 
-        df = xl.parse(xl.sheet_names[0], header=start_row)
+            df = xl.parse(xl.sheet_names[0], header=start_row)
 
         date_col = None
         for c in df.columns:
@@ -230,11 +231,17 @@ def _merge_repeated_grade_windows(block_events):
         previous_index = last_index_by_key.get(key)
         if previous_index is not None:
             previous = merged[previous_index]
-            previous_end = _time_key(previous.get("Fim"))
-            current_start = _time_key(event.get("Início"))
-            if previous_end is not None and current_start is not None and current_start <= previous_end:
-                current_end = _time_key(event.get("Fim"))
-                if current_end is not None and (previous_end is None or current_end > previous_end):
+            # Comparar horários brutos (_time_key) quebra na virada da
+            # meia-noite: uma reprise das 01:00 teria valor bruto menor que
+            # o Fim das 21:00 do mesmo dia de transmissão e pareceria "dentro"
+            # da janela anterior, quando na verdade é horas depois. Usamos o
+            # tempo decorrido a partir do Início da ocorrência anterior, que
+            # já trata a virada corretamente (ver _elapsed_minutes).
+            elapsed_window = _elapsed_minutes(previous.get("Início"), previous.get("Fim"))
+            elapsed_start = _elapsed_minutes(previous.get("Início"), event.get("Início"))
+            if elapsed_window is not None and elapsed_start is not None and elapsed_start <= elapsed_window:
+                elapsed_end = _elapsed_minutes(previous.get("Início"), event.get("Fim"))
+                if elapsed_end is not None and elapsed_end > elapsed_window:
                     previous["Fim"] = event.get("Fim")
                 continue
 
@@ -285,6 +292,7 @@ def extract_sportv_channel_block(
 
     last_aquecimento_by_channel = {}
     last_aquecimento_date_by_channel = {}
+    last_aquecimento_name_by_channel = {}
     current_date_by_channel = {}
     block_events = []
 
@@ -356,15 +364,20 @@ def extract_sportv_channel_block(
             if last_aquecimento_by_channel.get(row_channel) is None or current_date_key != previous_pre_date_key:
                 last_aquecimento_by_channel[row_channel] = hora
                 last_aquecimento_date_by_channel[row_channel] = current_date
+                last_aquecimento_name_by_channel[row_channel] = evento
+            elif "AQUECIMENTO DELAS" in ev_upper and "AQUECIMENTO DELAS" not in str(last_aquecimento_name_by_channel.get(row_channel, "")).upper():
+                last_aquecimento_name_by_channel[row_channel] = evento
             continue
 
         pre = last_aquecimento_by_channel.get(row_channel)
+        pre_origem = last_aquecimento_name_by_channel.get(row_channel)
 
         block_events.append({
             'Plataforma': row_channel,
             'Data': current_date,
             'Início': hora,
             'Pré': pre,
+            'Pré_Origem': pre_origem,
             'Fim': None,
             'Evento': evento,
             'V/I': vi
@@ -372,6 +385,7 @@ def extract_sportv_channel_block(
 
         last_aquecimento_by_channel[row_channel] = None
         last_aquecimento_date_by_channel[row_channel] = None
+        last_aquecimento_name_by_channel[row_channel] = None
 
     # Calculate Fim: skip filler/generic blocks (no V/R marker) and find
     # the next live (V) or reprise (R) broadcast event. The Pré of that
@@ -422,13 +436,15 @@ def _consolidate_grade_dataframe_windows(df):
 
 def process_premiere_grade(file_path):
     try:
-        xl = pd.ExcelFile(file_path)
-        df_raw = xl.parse(xl.sheet_names[0], header=None)
-        start_row = _find_header_row(df_raw, keywords=("EVENTO", "DATA", "CANAL"))
-        df = xl.parse(xl.sheet_names[0], header=start_row)
+        df = pd.DataFrame()
+        with pd.ExcelFile(file_path) as xl:
+            df_raw = xl.parse(xl.sheet_names[0], header=None)
+            start_row = _find_header_row(df_raw, keywords=("EVENTO", "DATA", "CANAL"))
+            df = xl.parse(xl.sheet_names[0], header=start_row)
 
         events = []
         pending_pre = {}
+        pending_pre_origem = {}
         for _, row in df.iterrows():
             evento = str(row.get('EVENTO', '')).strip()
             if evento.lower() in ['nan', 'none', '']:
@@ -447,9 +463,10 @@ def process_premiere_grade(file_path):
             # linha separada (por exemplo, FLUMINENSE X PALMEIRAS - PRÉ-HORA).
             # Essa linha é um marcador de Pré, não uma atividade independente.
             evento_norm = evento.upper().replace('É', 'E').replace('-', ' ').strip()
-            if 'PRE HORA' in evento_norm or evento_norm in {'PRE', 'AQUECIMENTO'}:
+            if 'PRE HORA' in evento_norm or evento_norm in {'PRE', 'AQUECIMENTO'} or 'AQUECIMENTO' in evento_norm:
                 pre_value = inicio_value if pd.notna(inicio_value) else row.get('PRÉ')
                 pending_pre[matchup_key] = pre_value
+                pending_pre_origem[matchup_key] = evento
                 continue
 
             # Construct Event name from Mandante X Visitante if Evento is just "BRASILEIRO"
@@ -459,6 +476,7 @@ def process_premiere_grade(file_path):
                 evento_full = evento
 
             pre_value = pending_pre.pop(matchup_key, None)
+            pre_origem = pending_pre_origem.pop(matchup_key, None)
             if pre_value is None or pd.isna(pre_value):
                 pre_value = row.get('PRÉ')
 
@@ -467,6 +485,7 @@ def process_premiere_grade(file_path):
                 'Data': data_value,
                 'Início': inicio_value,
                 'Pré': pre_value,
+                'Pré_Origem': pre_origem,
                 'Fim': row.get('PÓS'),
                 'Evento': evento_full,
                 'V/I': 'V',
@@ -480,10 +499,11 @@ def process_premiere_grade(file_path):
 
 def process_combate_grade(file_path):
     try:
-        xl = pd.ExcelFile(file_path)
-        df_raw = xl.parse(xl.sheet_names[0], header=None)
-        start_row = _find_header_row(df_raw, keywords=("EVENTO", "DATA", "COMBATE"))
-        df = xl.parse(xl.sheet_names[0], header=start_row)
+        df = pd.DataFrame()
+        with pd.ExcelFile(file_path) as xl:
+            df_raw = xl.parse(xl.sheet_names[0], header=None)
+            start_row = _find_header_row(df_raw, keywords=("EVENTO", "DATA", "COMBATE"))
+            df = xl.parse(xl.sheet_names[0], header=start_row)
 
         events = []
         for _, row in df.iterrows():

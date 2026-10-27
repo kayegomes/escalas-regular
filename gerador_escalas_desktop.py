@@ -3,6 +3,7 @@ import logging
 import os
 import queue
 import re
+import sys
 import threading
 import traceback
 import unicodedata
@@ -84,13 +85,71 @@ def _scale_period_bounds(df):
     return start, end
 
 
-def _split_scale_weeks(df):
-    """Divide uma escala em blocos consecutivos de sete dias."""
+def _sort_dataframe_by_date_and_time(df):
+    """Ordena a escala cronologicamente por data e horário de início."""
+    if df is None or df.empty:
+        return df
+
+    df_sorted = df.copy()
+
+    if "Data_obj" not in df_sorted.columns:
+        date_col = "Data_original" if "Data_original" in df_sorted.columns else ("Data" if "Data" in df_sorted.columns else None)
+        if date_col:
+            bounds = df_sorted[date_col].apply(_date_range_bounds)
+            df_sorted["Data_obj"] = bounds.apply(lambda item: item[0])
+            df_sorted["Data_fim_obj"] = bounds.apply(lambda item: item[1])
+
+    def _parse_time_sort_key(row):
+        val = row.get("Início", "-")
+        if val is None or pd.isna(val):
+            return "99:99"
+        text = str(val).strip()
+        if text in {"", "-", "nan", "NaT", "None", "FOLGA"}:
+            return "99:99"
+        if " " in text:
+            text = text.split(" ")[-1]
+        parts = text.split(":")
+        if len(parts) >= 2:
+            try:
+                h = int(parts[0])
+                m = int(parts[1])
+                return f"{h:02d}:{m:02d}"
+            except ValueError:
+                pass
+        return text
+
+    if "Data_obj" in df_sorted.columns:
+        df_sorted["_sort_time"] = df_sorted.apply(_parse_time_sort_key, axis=1)
+        df_sorted = df_sorted.sort_values(
+            by=["Data_obj", "_sort_time"],
+            ascending=[True, True],
+            kind="stable",
+            na_position="last",
+        )
+        df_sorted = df_sorted.drop(columns=["_sort_time"], errors="ignore")
+
+    return df_sorted
+
+
+def _split_scale_weeks(df, filter_start=None, filter_end=None):
+    """Divide uma escala em blocos consecutivos de sete dias.
+
+    Quando o período filtrado na Etapa 3 é informado, ele define as bordas dos
+    blocos. Assim o período divulgado é o que o usuário escolheu, e não o
+    primeiro/último compromisso do profissional, que pode cobrir menos dias.
+    """
     if df is None or df.empty:
         return []
 
+    df = _sort_dataframe_by_date_and_time(df)
     starts = pd.to_datetime(df.get("Data_obj"), errors="coerce")
     start, end = _scale_period_bounds(df)
+
+    filter_start = pd.to_datetime(filter_start, errors="coerce")
+    filter_end = pd.to_datetime(filter_end, errors="coerce")
+    if pd.notna(filter_start) and pd.notna(filter_end) and filter_start <= filter_end:
+        start, end = filter_start.normalize(), filter_end.normalize()
+
     if pd.isna(start) or pd.isna(end):
         return [(1, df.copy(), pd.NaT, pd.NaT)]
 
@@ -102,11 +161,17 @@ def _split_scale_weeks(df):
     week_number = 1
     bucket_start = start
     start_days = starts.dt.normalize()
+    # As bordas do recorte podem ser mais estreitas que os dados (um compromisso
+    # de vários dias iniciado antes do filtro, por exemplo). O primeiro e o
+    # último bloco absorvem o que ficar de fora para nenhuma linha sumir do HTML.
     while bucket_start <= end:
         bucket_end = min(bucket_start + pd.Timedelta(days=6), end)
-        mask = start_days.between(bucket_start, bucket_end, inclusive="both")
+        lower = pd.Timestamp.min if bucket_start == start else bucket_start
+        upper = pd.Timestamp.max if bucket_end == end else bucket_end
+        mask = start_days.between(lower, upper, inclusive="both")
         part = df.loc[mask].copy()
         if not part.empty:
+            part = _sort_dataframe_by_date_and_time(part)
             chunks.append((week_number, part, bucket_start, bucket_end))
             week_number += 1
         bucket_start = bucket_end + pd.Timedelta(days=1)
@@ -136,7 +201,7 @@ def _html_delivery_metadata(filename):
 
 def _extract_html_period(html_body):
     match = re.search(
-        r"<(?:h3|p)[^>]*>\s*(?:Escala consolidada|Prévia da sua escala)\s*:\s*([^<]+)",
+        r"<(?:h3|p)[^>]*>\s*(?:Escala consolidada|Prévia da sua escala)\s*:?\s*([^<]+)",
         html_body,
         flags=re.IGNORECASE,
     )
@@ -282,13 +347,14 @@ def _build_elenco_value(row, recipient_name=""):
 try:
     from tkcalendar import DateEntry
 except ImportError:  # Fallback simples para ambientes de desenvolvimento sem tkcalendar.
-    class DateEntry(tk.Entry):
+    class DateEntry(tk.Entry):  # type: ignore[no-redef]
         def __init__(self, master=None, date_pattern="dd/mm/yyyy", **kwargs):
             super().__init__(master, **kwargs)
 
 from app_support import (
     OutputFileLockedError,
     append_execution_history,
+    is_valid_email,
     load_app_config,
     split_email_addresses,
     safe_filename,
@@ -303,7 +369,10 @@ class GeradorEscalasApp:
         self.root.minsize(900, 620)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        if getattr(sys, "frozen", False):
+            self.base_dir = os.path.dirname(sys.executable)
+        else:
+            self.base_dir = os.path.dirname(os.path.abspath(__file__))
         self.config = load_app_config(self.base_dir)
         self._closed = False
         self._ui_queue = queue.Queue()
@@ -616,22 +685,85 @@ class GeradorEscalasApp:
         self.show_info("Log de Execução", "Log copiado para a área de transferência.")
 
     def _autofill_default_paths(self):
-        """Preenche arquivos conhecidos apenas quando estão na pasta do programa."""
+        """Preenche arquivos conhecidos nas pastas do programa ou diretório atual."""
         defaults = self.config.get("defaults", {})
         output_names = self.config.get("outputs", {})
-        candidates = {
-            self.entry_2405: [defaults.get("report_2405", "Check pre envio-Macro Colunas - 15052026.xlsm")],
-            self.entry_2468: [defaults.get("report_2468", "(2468) Esporte - Atividades de Equipe – Sub-Atividades_v2_ (9).xlsx"), output_names.get("etapa_1", "Check_2405_Gerado.xlsx"), output_names.get("etapa_2", "Check_Pre_Envio_Gerado.xlsx")],
-            self.entry_contacts: [defaults.get("contacts", output_names.get("contacts", "contatos_nova_versao.xlsx"))],
-        }
-        for entry, names in candidates.items():
-            if entry.get().strip():
+
+        search_dirs = [self.base_dir]
+        if getattr(sys, "frozen", False):
+            meipass = getattr(sys, "_MEIPASS", None)
+            if meipass and meipass not in search_dirs:
+                search_dirs.append(meipass)
+        cwd = os.getcwd()
+        if cwd and cwd not in search_dirs:
+            search_dirs.append(cwd)
+
+        field_specs = [
+            (
+                getattr(self, "entry_2405", None),
+                [defaults.get("report_2405", "Check pre envio-Macro Colunas - 15052026.xlsm")],
+                ["2405"]
+            ),
+            (
+                getattr(self, "entry_2468", None),
+                [defaults.get("report_2468", "(2468) Esporte - Atividades de Equipe – Sub-Atividades_v2_ (9).xlsx")],
+                ["2468"]
+            ),
+            (
+                getattr(self, "entry_check", None),
+                [
+                    defaults.get("check_pre_envio", output_names.get("etapa_2", "Check_Pre_Envio_Gerado.xlsx")),
+                    "Check_Pre_Envio_Gerado.xlsx",
+                    "Check_Pre_Envio_Gerado.xlsm",
+                    "Check_Pre_Envio.xlsx",
+                ],
+                ["check_pre_envio_gerado", "check_pre_envio"]
+            ),
+            (
+                getattr(self, "entry_contacts", None),
+                [
+                    defaults.get("contacts", output_names.get("contacts", "contatos_nova_versao.xlsx")),
+                    "contatos_nova_versao.xlsx",
+                    "contatos_nova_versao.xlsm",
+                ],
+                ["contatos_nova_versao", "contatos"]
+            ),
+        ]
+
+        for entry, names, key_patterns in field_specs:
+            if entry is None or entry.get().strip():
                 continue
-            for name in names:
-                path = os.path.join(self.base_dir, name)
-                if os.path.exists(path):
-                    entry.insert(0, path)
+
+            found_path = None
+            for d in search_dirs:
+                for name in names:
+                    path = os.path.join(d, name)
+                    if os.path.exists(path):
+                        found_path = path
+                        break
+                if found_path:
                     break
+
+            if not found_path:
+                for d in search_dirs:
+                    if not os.path.isdir(d):
+                        continue
+                    try:
+                        for filename in os.listdir(d):
+                            if not filename.lower().endswith((".xlsx", ".xlsm", ".xls")):
+                                continue
+                            fn_lower = filename.lower()
+                            if any(kp in fn_lower for kp in key_patterns):
+                                found_path = os.path.join(d, filename)
+                                break
+                    except OSError:
+                        pass
+                    if found_path:
+                        break
+
+            if found_path:
+                entry.delete(0, tk.END)
+                entry.insert(0, found_path)
 
     def setup_tab_contatos(self):
         frame_tree = tk.Frame(self.tab_contatos)
@@ -1036,6 +1168,9 @@ class GeradorEscalasApp:
                 df = df[~transition_mask].copy()
                 self.log(f"{removed_transitions} linhas de viagem/virada de dia sem atividade foram removidas dos HTMLs.")
 
+            # Bordas do período escolhido na tela; definem o período divulgado no HTML.
+            filtro_inicio = filtro_fim = None
+
             if "Data" in df.columns:
                 df["Data_original"] = df["Data"]
                 bounds = df["Data"].apply(_date_range_bounds)
@@ -1047,6 +1182,7 @@ class GeradorEscalasApp:
                         dt_fim = pd.to_datetime(data_fim, format="%d/%m/%Y")
                         mask = (df["Data_fim_obj"] >= dt_inicio) & (df["Data_obj"] <= dt_fim)
                         df = df[mask]
+                        filtro_inicio, filtro_fim = dt_inicio, dt_fim
                         self.log(f"Filtro aplicado: mostrando eventos de {data_inicio} até {data_fim}.")
                     except Exception as e:
                         self.log(f"Erro ao processar datas de filtro. Verifique o formato DD/MM/YYYY. Detalhe: {e}")
@@ -1062,6 +1198,7 @@ class GeradorEscalasApp:
                 }
                 df["Dia"] = df["Data_obj"].dt.strftime("%A").map(dias_pt)
                 df["Data"] = df["Data_original"].apply(_format_date_range)
+                df = _sort_dataframe_by_date_and_time(df)
 
             if df.empty:
                 self.set_progress(100, "Nenhum evento no período selecionado")
@@ -1146,7 +1283,7 @@ class GeradorEscalasApp:
             for index, prof in enumerate(profissionais, start=1):
                 df_prof = df[df[nome_col] == prof]
                 if not df_prof.empty:
-                    semanas = _split_scale_weeks(df_prof)
+                    semanas = _split_scale_weeks(df_prof, filtro_inicio, filtro_fim)
                     if len(semanas) > 1:
                         self.log(f"{prof}: escala dividida em {len(semanas)} semanas separadas.")
                     for week_number, df_week, period_start, period_end in semanas:
@@ -1198,22 +1335,22 @@ class GeradorEscalasApp:
         <head>
             <meta charset="utf-8">
             <style>
-                body {{ font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 12px; color: #222; }}
-                .container {{ max-width: 1400px; margin: 0 auto; background: #fff; padding: 22px; border-radius: 10px; box-shadow: 0 1px 8px rgba(0,0,0,.10); }}
-                .greeting {{ text-align: center; border-bottom: 1px solid #d9d9d9; padding-bottom: 18px; margin-bottom: 28px; }}
-                .greeting h1 {{ margin: 0 0 4px; font-size: 24px; color: #222; }}
-                .greeting p {{ margin: 3px 0; color: #666; font-size: 16px; }}
-                .contact-box {{ background: #f7f9fc; border-left: 4px solid #1683e8; padding: 18px 14px; margin-bottom: 24px; font-size: 16px; }}
-                .contact-box strong {{ display: block; margin-bottom: 12px; }}
-                .contact-box p {{ margin: 0; }}
-                .contact-table {{ width: auto; margin: 0; font-size: 14px; background: #fff; }}
-                .contact-table td {{ padding: 3px 8px; border: 1px solid #d9d9d9; }}
-                h3 {{ margin: 0 0 12px; color: #222; font-size: 17px; }}
+                body {{ font-family: Calibri, Arial, sans-serif; background: #fff; margin: 0; padding: 12px; color: #000; }}
+                .container {{ max-width: 1400px; margin: 0 auto; background: #fff; padding: 0; }}
+                .greeting {{ text-align: left; margin-bottom: 16px; }}
+                .greeting h1 {{ margin: 0 0 4px; font-size: 22px; color: #000; font-weight: bold; }}
+                .greeting p {{ margin: 8px 0; color: #000; font-size: 14px; }}
+                .greeting .lembrete {{ font-size: 18px; text-decoration: underline; }}
+                .contact-box {{ background: none; border-left: none; padding: 0; margin-bottom: 16px; font-size: 14px; }}
+                .contact-table {{ width: auto; margin: 0; font-size: 14px; background: #fff; border-collapse: collapse; }}
+                .contact-table td {{ padding: 4px 10px; border: 1px solid #ddd; }}
+                .contact-table td.contact-header {{ font-weight: bold; }}
+                h3 {{ margin: 0 0 10px; color: #000; font-size: 14px; font-weight: bold; text-decoration: underline; }}
                 table {{ border-collapse: collapse; width: 100%; font-size: 12px; }}
                 th, td {{ border: 1px solid #ddd; padding: 6px; text-align: left; vertical-align: top; }}
-                th {{ background-color: #f2f2f2; font-weight: bold; }}
-                tr:nth-child(even) {{ background-color: #f9f9f9; }}
-                .attention {{ color: #c00000; font-weight: bold; margin: 18px 0; }}
+                th {{ background-color: #fff; font-weight: bold; }}
+                .attention {{ color: #000; font-weight: normal; margin: 16px 0; }}
+                .attention strong {{ color: #c00000; }}
             </style>
         </head>
         <body>
@@ -1222,11 +1359,11 @@ class GeradorEscalasApp:
                     <h1>Oi {nome}</h1>
                     <p>Tudo bem?</p>
                     <p>Seguindo a nossa rotina semanal, segue a sua {mensagem_periodo} ({periodo}).</p>
-                    <p><strong>Lembre-se que mudanças acontecem.</strong> Se for o caso, as alterações serão informadas pelas equipes responsáveis: Eventos/Programas/Redação/Conteúdo Digital.</p>
+                    <p><strong class="lembrete">Lembre-se que mudanças acontecem.</strong> Se for o caso, as alterações serão informadas pelas equipes responsáveis: Eventos/Programas/Redação/Conteúdo Digital.</p>
                 </div>
                 <div class="contact-box">
-                    <strong>Dúvidas ou problemas? É só nos procurar:</strong>
                     <table class="contact-table">
+                        <tr><td class="contact-header" colspan="2">Dúvidas ou problemas? É só nos procurar:</td></tr>
                         <tr><td>Claudio Rolim</td><td>(21) 99767-9446</td></tr>
                         <tr><td>Leticia Alvares</td><td>(21) 99645-5219</td></tr>
                         <tr><td>Juliana Vasconcellos</td><td>(21) 99027-9306</td></tr>
@@ -1237,7 +1374,7 @@ class GeradorEscalasApp:
                     </table>
                 </div>
                 <p class="attention"><strong>ATENÇÃO:</strong> Se tiver dias faltando na sua escala, não é erro! Apenas estão em aberto, aguardando definição. É importante podermos contar com você nessas datas.</p>
-                <h3>{titulo_periodo}: {periodo}</h3>
+                <h3>{titulo_periodo} {periodo}</h3>
             <table>
                 <tr>
                     <th>Nome</th>
@@ -1295,6 +1432,7 @@ class GeradorEscalasApp:
             else:
                 periodo = "Período não informado"
 
+        df = _sort_dataframe_by_date_and_time(df)
         rows_html = ""
         for _, row in df.iterrows():
             evento_raw = "-"
@@ -1357,20 +1495,31 @@ class GeradorEscalasApp:
             rows_html += f"<td>{inicio}</td>"
             rows_html += f"<td>{fim}</td>"
             rows_html += f"<td>{evento}</td>"
-            rows_html += f"<td>{html_value(row.get('Produto (WO/Quick Hold)', row.get('Produto (WO/Shift)', row.get('Produto', '-'))))}</td>"
-            local_raw = "-"
-            for local_column in ("Local de Locução", "Local Narração", "Local de Gravação", "Local"):
-                candidate = row.get(local_column, "-")
-                if candidate is None or pd.isna(candidate):
-                    continue
-                candidate_text = str(candidate).strip()
-                if candidate_text and candidate_text not in {"-", "nan", "NaT", "None"}:
-                    local_raw = candidate_text
-                    break
+            if is_folga:
+                produto_raw = "FOLGA"
+                local_raw = "FOLGA"
+                elenco_raw = ""
+                coordenador_raw = ""
+                produtor_raw = ""
+            else:
+                produto_raw = row.get('Produto (WO/Quick Hold)', row.get('Produto (WO/Shift)', row.get('Produto', '-')))
+                local_raw = "-"
+                for local_column in ("Local de Locução", "Local Narração", "Local de Gravação", "Local"):
+                    candidate = row.get(local_column, "-")
+                    if candidate is None or pd.isna(candidate):
+                        continue
+                    candidate_text = str(candidate).strip()
+                    if candidate_text and candidate_text not in {"-", "nan", "NaT", "None"}:
+                        local_raw = candidate_text
+                        break
+                elenco_raw = _build_elenco_value(row, nome)
+                coordenador_raw = row.get('Coordenador', '-')
+                produtor_raw = row.get('Produtor', '-')
+            rows_html += f"<td>{html_value(produto_raw)}</td>"
             rows_html += f"<td>{html_value(local_raw)}</td>"
-            rows_html += f"<td>{html_value(_build_elenco_value(row, nome))}</td>"
-            rows_html += f"<td>{html_value(row.get('Coordenador', '-'))}</td>"
-            rows_html += f"<td>{html_value(row.get('Produtor', '-'))}</td>"
+            rows_html += f"<td>{'' if is_folga else html_value(elenco_raw)}</td>"
+            rows_html += f"<td>{'' if is_folga else html_value(coordenador_raw)}</td>"
+            rows_html += f"<td>{'' if is_folga else html_value(produtor_raw)}</td>"
             rows_html += "</tr>"
 
         mensagem_periodo = "prévia da semana seguinte" if is_preview else "escala consolidada da próxima semana"

@@ -1,5 +1,12 @@
 # Histórico de Alterações
 
+## Atualização de outubro de 2026 — Status de Revisão para "Aquecimento Delas" e "TV Globo"
+
+- **Status Revisão para TV Globo**: Eventos e transmissões cujo canal ou plataforma seja a TV Globo (ou derivados do cliente Globo) agora recebem automaticamente o status de revisão `TV Globo` (com severidade de revisão e cor azul-claro `FFB4C6E7`), permitindo identificar imediatamente as escalas da emissora aberta e conferir seus horários e grade específicos.
+- **Status Revisão no Check de Pré-Envio para Aquecimento Delas**: Quando o Pré de um evento esportivo na grade for originado do programa `AQUECIMENTO DELAS`, o evento recebe automaticamente o status de revisão `Aquecimento Delas` (com severidade de revisão e cor de destaque lilás/pastel `FFE1D5E7`), permitindo identificar e conferir a escala e a transmissão correspondente.
+- **Aba Legenda**: A aba `Legenda` da planilha `Check_Pre_Envio_Gerado.xlsx` agora inclui as linhas e amostras de cores para `Aquecimento Delas` e `TV Globo`.
+- **Preservação de regras existentes**: Nas demais situações de aquecimento ou pré (como `AQUECIMENTO SPORTV`, `PRÉ-JOGO` e `PRÉ-HORA`), a identificação e os status de revisão continuam funcionando normalmente.
+
 ## Atualização de agosto de 2026
 
 ### Interface de Log de Execução
