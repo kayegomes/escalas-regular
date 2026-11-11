@@ -46,6 +46,8 @@ except ModuleNotFoundError:
     _split_scale_weeks = None
 from engine_cross import (
     _append_pre_review_alerts,
+    _is_chamada_insta,
+    _is_hello_la,
     _mark_missing_grade,
     _find_best_grade_match,
     _is_folga_row,
@@ -174,14 +176,14 @@ class EngineRegressionTests(unittest.TestCase):
         self.assertEqual(narrador, "Everaldo Marques ; Isabelly Morais (by)")
 
     @unittest.skipIf(_build_elenco_value is None, "Tkinter não disponível neste ambiente")
-    def test_elenco_excludes_the_recipient(self):
+    def test_elenco_includes_the_recipient_without_duplicates(self):
         row = pd.Series({
             "Elenco": "Grafite ; Rafaelle Seraphim",
             "Narrador": "Grafite",
             "Comentarista": "Rafaelle Seraphim",
             "Repórter": "",
         })
-        self.assertEqual(_build_elenco_value(row, "Grafite"), "Rafaelle Seraphim")
+        self.assertEqual(_build_elenco_value(row, "Grafite"), "Grafite ; Rafaelle Seraphim")
 
     @unittest.skipIf(GeradorEscalasApp is None, "Tkinter não disponível neste ambiente")
     def test_html_keeps_folga_rows_and_uses_description(self):
@@ -394,7 +396,8 @@ class EngineRegressionTests(unittest.TestCase):
             html_path = next(Path(tmp).glob("escala_*.html"))
             html = html_path.read_text(encoding="utf-8")
             self.assertIn("Vander Carioca", html)
-            self.assertNotIn("André Felipe ; Vander Carioca", html)
+            self.assertIn("André Felipe ; Vander Carioca", html)
+            self.assertIn("Century Gothic", html)
             self.assertIn("Oi André Felipe", html)
             self.assertIn("Escala consolidada 10/08/2026 a 10/08/2026", html)
             self.assertIn("Dúvidas ou problemas? É só nos procurar:", html)
@@ -415,6 +418,49 @@ class EngineRegressionTests(unittest.TestCase):
             self.assertIn("CAMPEONATO SUL-AMERICANO MASCULINO DE FUTSAL SUB-17/2026/NA", html)
             self.assertIn("EQUADOR X BRASIL", html)
             self.assertIn("Narração By JB", html)
+
+    @unittest.skipIf(GeradorEscalasApp is None, "Tkinter não disponível neste ambiente")
+    def test_esp_colaboradores_receive_short_email_body(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            df = pd.DataFrame([{
+                "Nome": "Betina Schmidt", "Plataforma": "Sportv", "Data": "10/11/2026", "Dia": "Terça-feira",
+                "Pré": "-", "Início": "10:00", "Fim": "12:15", "Evento/Programa": "SporTV Redação",
+                "Produto (WO/Quick Hold)": "REDAÇÃO SPORTV/NA/NA", "Local de Locução": "Offtube ION",
+                "Comentarista": "Betina Schmidt", "Equipe": "Esp - Colaboradores",
+                "Coordenador": "-", "Produtor": "-",
+            }])
+            GeradorEscalasApp.gerar_html(
+                object(), "Betina Schmidt", df, tmp,
+                period_start=pd.Timestamp("2026-11-09"), period_end=pd.Timestamp("2026-11-14"),
+            )
+            html = next(Path(tmp).glob("escala_*.html")).read_text(encoding="utf-8")
+            self.assertIn("Envio abaixo a escala do evento", html)
+            self.assertIn("Obrigada, abraços!", html)
+            self.assertIn("Dúvidas ou problemas? É só nos procurar:", html)
+            self.assertNotIn("Oi Betina Schmidt", html)
+            self.assertNotIn("ATENÇÃO:", html)
+            self.assertNotIn("Lembre-se que mudanças acontecem", html)
+            self.assertNotIn("<h3>", html)
+            self.assertEqual(_extract_html_period(html), "09/11/2026 a 14/11/2026")
+
+    @unittest.skipIf(GeradorEscalasApp is None, "Tkinter não disponível neste ambiente")
+    def test_short_email_rule_covers_programas_colaboradores_but_not_talentos(self):
+        base = {
+            "Plataforma": "Sportv", "Data": "10/11/2026", "Dia": "Terça-feira", "Pré": "-",
+            "Início": "10:00", "Fim": "12:15", "Evento/Programa": "SporTV Redação",
+            "Produto (WO/Quick Hold)": "REDAÇÃO SPORTV/NA/NA", "Coordenador": "-", "Produtor": "-",
+        }
+        cases = [
+            ("Tim Vickery", "Esp - Programas", "Colaboradores", True),
+            ("Alexandre Lozetti", "Esp - Talentos", "Comentarista", False),
+        ]
+        for nome, equipe, funcao, short in cases:
+            with tempfile.TemporaryDirectory() as tmp:
+                df = pd.DataFrame([{**base, "Nome": nome, "Equipe": equipe, "Função": funcao}])
+                GeradorEscalasApp.gerar_html(object(), nome, df, tmp)
+                html = next(Path(tmp).glob("escala_*.html")).read_text(encoding="utf-8")
+                self.assertEqual("Envio abaixo a escala do evento" in html, short, nome)
+                self.assertEqual(f"Oi {nome}" in html, not short, nome)
 
     def test_transmissive_selection_row_wins_over_unmarked_continuation(self):
         row = pd.Series({
@@ -650,6 +696,20 @@ class EngineRegressionTests(unittest.TestCase):
         self.assertTrue(_is_ge_tv_row(pd.Series({"Canal": "GE TV", "Plataforma": "GE TV"})))
         self.assertTrue(_is_ge_tv_row(pd.Series({"Canal": "GE-TV"})))
         self.assertFalse(_is_ge_tv_row(pd.Series({"Canal": "Sportv", "Plataforma": "Sportv 2"})))
+
+    def test_ge_tv_quick_hold_without_channel_is_excluded_by_client(self):
+        quick_hold = pd.Series({"Cliente": "GE TV - CPC ESPORTE", "Canal": float("nan"), "Row Display": "REUNIÃO GE TV"})
+        sportv = pd.Series({"Cliente": "SPORTV - CPC ESPORTE", "Canal": float("nan")})
+        self.assertTrue(_is_ge_tv_row(quick_hold))
+        self.assertFalse(_is_ge_tv_row(sportv))
+
+    def test_chamada_insta_and_hello_la_are_detected(self):
+        self.assertTrue(_is_chamada_insta(pd.Series({"Row Display": "CHAMADA INSTA - JOGO DO BRASIL"})))
+        self.assertTrue(_is_chamada_insta(pd.Series({"Evento/Programa": "Chamada Insta"})))
+        self.assertFalse(_is_chamada_insta(pd.Series({"Row Display": "Gravação Abertura Chamada de Fim de Ano Globo"})))
+        self.assertTrue(_is_hello_la(pd.Series({"Evento/Programa": "HELLO LA"})))
+        self.assertTrue(_is_hello_la(pd.Series({"Evento/Programa": "HELLO, LA"})))
+        self.assertFalse(_is_hello_la(pd.Series({"Evento/Programa": "HELLO WORLD"})))
 
     def test_daytime_event_does_not_match_same_title_on_other_date(self):
         row = pd.Series({

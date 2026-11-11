@@ -81,6 +81,21 @@ def _is_quickhold_in_scale(row):
     return True
 
 
+def _activity_titles(row):
+    return [
+        re.sub(r"[^A-Z0-9]+", " ", _norm_text(_find_column(row, [column]))).strip()
+        for column in ("Evento/Programa", "Descrição", "Atividade/Descrição", "Row Display", "Quick Hold Job Info")
+    ]
+
+
+def _is_chamada_insta(row):
+    return any(title.startswith("CHAMADA INSTA") for title in _activity_titles(row))
+
+
+def _is_hello_la(row):
+    return any(title == "HELLO LA" or title.startswith("HELLO LA ") for title in _activity_titles(row))
+
+
 def _is_time_to_confirmar(value):
     if value is None or pd.isna(value):
         return False
@@ -729,6 +744,27 @@ def run_etapa1(path_2468, path_sp1, path_sp2, path_pr1, path_pr2, path_co1, path
         if _is_folga_row(row_2468):
             out_row["Status Revisão"] = "OK"
             out_row["_severity"] = "OK"
+            output_rows.append(out_row)
+            continue
+
+        # Regras de negócio: CHAMADA INSTA sempre vai para conferência de
+        # horário; HELLO, LA usa o horário da própria WO, não o da grade.
+        if _is_chamada_insta(row_2468):
+            out_row["Pré"] = "-"
+            out_row["Status Revisão"] = "Horário a Confirmar"
+            out_row["_severity"] = "YELLOW"
+            output_rows.append(out_row)
+            continue
+
+        if _is_hello_la(row_2468):
+            out_row["Pré"] = "-"
+            local_narr = str(_find_column(row_2468, ["Local de Locução", "Local Narração", "Local"])).strip().upper()
+            if local_narr in {"", "NAN", "NAT", "NONE"}:
+                out_row["Status Revisão"] = "Local Ausente"
+                out_row["_severity"] = "YELLOW"
+            else:
+                out_row["Status Revisão"] = "OK"
+                out_row["_severity"] = "OK"
             output_rows.append(out_row)
             continue
 

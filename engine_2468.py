@@ -40,6 +40,12 @@ def _is_ge_tv_row(row):
             value = _norm_text(row.get(col))
             if value.replace(" ", "").replace("-", "") == "GETV":
                 return True
+    # Quick Holds da GE TV vêm sem Canal; o Cliente ("GE TV - CPC ESPORTE")
+    # é o que identifica o elenco da GE TV.
+    if "Cliente" in row.index:
+        cliente = _norm_text(row.get("Cliente")).replace(" ", "").replace("-", "")
+        if cliente.startswith("GETV"):
+            return True
     return False
 
 

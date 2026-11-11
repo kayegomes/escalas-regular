@@ -199,7 +199,26 @@ def _html_delivery_metadata(filename):
     return stem.replace("_", " "), week_number, week_number > 1
 
 
+def _is_colaborador_scale(df):
+    """Colaboradores (equipe Esp - Colaboradores ou Função Colaboradores) recebem o e-mail reduzido."""
+    if df is None:
+        return False
+    for column in ("Equipe", "Função"):
+        if column not in df.columns:
+            continue
+        for value in df[column].tolist():
+            if value is None or pd.isna(value):
+                continue
+            normalized = unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode("ascii").upper()
+            if "COLABORADOR" in normalized:
+                return True
+    return False
+
+
 def _extract_html_period(html_body):
+    meta = re.search(r'<meta\s+name="periodo"\s+content="([^"]*)"', html_body, flags=re.IGNORECASE)
+    if meta and meta.group(1).strip():
+        return html_lib.unescape(meta.group(1).strip())
     match = re.search(
         r"<(?:h3|p)[^>]*>\s*(?:Escala consolidada|Prévia da sua escala)\s*:?\s*([^<]+)",
         html_body,
@@ -323,10 +342,9 @@ def _build_group_email_subject(nome, deliveries, teste=False):
 
 
 def _build_elenco_value(row, recipient_name=""):
-    """Combina participantes e remove o profissional que recebe a escala."""
+    """Combina participantes do evento, incluindo o próprio destinatário."""
     people = []
     seen = set()
-    recipient_key = re.sub(r"\s+", " ", str(recipient_name or "")).strip().casefold()
     for column in ("Elenco", "Narrador", "Comentarista", "Repórter"):
         value = row.get(column, "-")
         if value is None or pd.isna(value):
@@ -337,7 +355,7 @@ def _build_elenco_value(row, recipient_name=""):
         for person in text.split(";"):
             person = person.strip()
             person_key = re.sub(r"\s+", " ", person).casefold()
-            if not person or person == "-" or person_key == recipient_key or person_key in seen:
+            if not person or person == "-" or person_key in seen:
                 continue
             people.append(person)
             seen.add(person_key)
@@ -1334,8 +1352,10 @@ class GeradorEscalasApp:
         <html>
         <head>
             <meta charset="utf-8">
+            <meta name="periodo" content="{periodo}">
             <style>
-                body {{ font-family: Calibri, Arial, sans-serif; background: #fff; margin: 0; padding: 12px; color: #000; }}
+                body {{ font-family: 'Century Gothic', CenturyGothic, AppleGothic, sans-serif; background: #fff; margin: 0; padding: 12px; color: #000; }}
+                p, h1, h3, table, th, td, strong {{ font-family: 'Century Gothic', CenturyGothic, AppleGothic, sans-serif; }}
                 .container {{ max-width: 1400px; margin: 0 auto; background: #fff; padding: 0; }}
                 .greeting {{ text-align: left; margin-bottom: 16px; }}
                 .greeting h1 {{ margin: 0 0 4px; font-size: 22px; color: #000; font-weight: bold; }}
@@ -1355,12 +1375,7 @@ class GeradorEscalasApp:
         </head>
         <body>
             <div class="container">
-                <div class="greeting">
-                    <h1>Oi {nome}</h1>
-                    <p>Tudo bem?</p>
-                    <p>Seguindo a nossa rotina semanal, segue a sua {mensagem_periodo} ({periodo}).</p>
-                    <p><strong class="lembrete">Lembre-se que mudanças acontecem.</strong> Se for o caso, as alterações serão informadas pelas equipes responsáveis: Eventos/Programas/Redação/Conteúdo Digital.</p>
-                </div>
+                {greeting_html}
                 <div class="contact-box">
                     <table class="contact-table">
                         <tr><td class="contact-header" colspan="2">Dúvidas ou problemas? É só nos procurar:</td></tr>
@@ -1373,8 +1388,8 @@ class GeradorEscalasApp:
                         <tr><td>Julia Silva Pereira (logística)</td><td>(21) 97480-7758</td></tr>
                     </table>
                 </div>
-                <p class="attention"><strong>ATENÇÃO:</strong> Se tiver dias faltando na sua escala, não é erro! Apenas estão em aberto, aguardando definição. É importante podermos contar com você nessas datas.</p>
-                <h3>{titulo_periodo} {periodo}</h3>
+                {attention_html}
+                {titulo_html}
             <table>
                 <tr>
                     <th>Nome</th>
@@ -1527,11 +1542,33 @@ class GeradorEscalasApp:
         file_suffix = f"_previa_semana_{week_number}" if is_preview else ""
         file_name = f"escala_{safe_filename(nome)}{file_suffix}.html"
         file_path = os.path.join(output_dir, file_name)
+        nome_html = html_lib.escape(str(nome))
+        periodo_html = html_lib.escape(periodo)
+        titulo_html = f"<h3>{html_lib.escape(titulo_periodo)} {periodo_html}</h3>"
+        if _is_colaborador_scale(df):
+            greeting_html = '<div class="greeting"><p>Envio abaixo a escala do evento</p></div>'
+            attention_html = '<p class="attention">Obrigada, abraços!</p>'
+            if not is_preview:
+                titulo_html = ""
+        else:
+            greeting_html = (
+                '<div class="greeting">'
+                f"<h1>Oi {nome_html}</h1>"
+                "<p>Tudo bem?</p>"
+                f"<p>Seguindo a nossa rotina semanal, segue a sua {html_lib.escape(mensagem_periodo)} ({periodo_html}).</p>"
+                '<p><strong class="lembrete">Lembre-se que mudanças acontecem.</strong> Se for o caso, as alterações '
+                "serão informadas pelas equipes responsáveis: Eventos/Programas/Redação/Conteúdo Digital.</p>"
+                "</div>"
+            )
+            attention_html = (
+                '<p class="attention"><strong>ATENÇÃO:</strong> Se tiver dias faltando na sua escala, não é erro! '
+                "Apenas estão em aberto, aguardando definição. É importante podermos contar com você nessas datas.</p>"
+            )
         rendered_html = html_template.format(
-            nome=html_lib.escape(str(nome)),
-            periodo=html_lib.escape(periodo),
-            mensagem_periodo=html_lib.escape(mensagem_periodo),
-            titulo_periodo=html_lib.escape(titulo_periodo),
+            periodo=periodo_html,
+            greeting_html=greeting_html,
+            attention_html=attention_html,
+            titulo_html=titulo_html,
             rows=rows_html,
         )
         if is_preview:
